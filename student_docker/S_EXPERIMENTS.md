@@ -240,3 +240,14 @@ S05 실행 등록: 2026-09-04T17:18:43.594944+00:00 (UTC), PID 305434. 접수 �
 - Artifacts: `S06.py`, `configs/S06.yaml`, `tests/test_s06.py`.
 - Verification: 6 focused tests passed before launch.
 - Status: queued through `tools/run_exp.py` under the shared GPU lock.
+
+## S08 — Fisher-weighted retain anchoring
+
+- Baseline: matched s06_seed0 objective and seed; same 4,800 steps, last 6 blocks, CKA floor 0.05, norm freeze, and all retain/forget loss weights.
+- Single change: estimate a diagonal empirical Fisher from 4,096 retain samples at M_o, normalize it per transformer block, then add 0.001 * sum(F_i * (theta_i - theta_i0)^2) on the last 6 blocks.
+- Difference from S07/rel_seed: no direct batch CKA_r loss; the anchor is a fixed parameter-space constraint, so S07's batch-level retain/forget gradient competition is absent.
+- Primary check: compare seed 0 against s06_seed0 and rel_seed0; only continue to seeds 2/4 if AUS and forget geometry stay within guardrails.
+- Guardrails: Acc_f <= 0.5%, AUS >= matched S06 - 0.001; rank by worst-seed RUS_o/final.
+- Artifacts: S08.py, configs/S08.yaml, tests/test_s08.py.
+- Verification: 6 focused S08 tests and 6 S06 regression tests passed before launch.
+- Status: ready; queue after the active rel_seed4 run.

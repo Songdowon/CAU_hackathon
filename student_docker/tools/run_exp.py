@@ -56,8 +56,12 @@ def run(cfg_path):
         wait_for_gpu()
         print(f"[{name}] 학습 시작", flush=True)
         t0 = time.time()
+        # 여러 큐가 같은 로그에 append하면 줄이 섞여 결과를 잘못 읽는 사고가 두 번
+        # 났다. 실행별 로그를 따로 남겨 원본을 항상 확인할 수 있게 한다.
         train = subprocess.run([sys.executable, script, "--config", str(cfg_path)],
                                capture_output=True, text=True)
+        Path("logs").mkdir(exist_ok=True)
+        Path(f"logs/{name}.train.log").write_text(train.stdout + train.stderr)
         secs = round(time.time() - t0)
         if train.returncode != 0:
             print(train.stdout[-2000:], train.stderr[-2000:])

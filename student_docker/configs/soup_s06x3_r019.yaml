@@ -1,0 +1,8 @@
+# soup_s06x3_r019 — tools/soup.py로 아래 4개 체크포인트의 가중치를 균등 평균한 모델
+# 각 재료는 unlearn_remap.py를 아래 config로 학습해 만든다.
+recipe:
+  - configs/s06_seed0.yaml   # S06 CKA floor 0.05 + S09 norm 동결, seed 0
+  - configs/s06_seed2.yaml   # 동일, seed 2
+  - configs/s06_seed4.yaml   # 동일, seed 4
+  - configs/r019.yaml        # lr 3e-5, 7200 steps, CKA 2.0 (floor/norm동결 없음), seed 0
+build: python tools/soup.py models/s06_seed0.pt models/s06_seed2.pt models/s06_seed4.pt models/r019.pt

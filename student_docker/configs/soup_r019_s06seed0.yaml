@@ -1,0 +1,6 @@
+# soup_r019_s06seed0 — tools/greedy_soup.py로 아래 2개 체크포인트를 균등 평균
+# greedy 탐색 결과 재료 2개가 최적이었고, 더 넣으면 점수가 떨어졌다.
+recipe:
+  - configs/r019.yaml        # lr 3e-5, 7200 steps, CKA 2.0, seed 0 — 강한 forget 삭제
+  - configs/s06_seed0.yaml   # + CKA floor 0.05, norm 동결, seed 0 — retain 보호
+build: python tools/soup.py models/r019.pt models/s06_seed0.pt

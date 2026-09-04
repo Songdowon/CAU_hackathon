@@ -1,0 +1,30 @@
+# det_check — rel_seed0과 완전히 동일한 설정·seed 재실행. 두 결과의 차이가 곧 CUDA 비결정성 크기이며, 그게 우리 효과 크기(0.002~0.005)보다 크면 지금까지의 짝지은 비교가 전부 판정 불가가 된다.
+seed: 0
+model:
+  arch: vit_base_patch16_224.mae
+  num_classes: 100
+  mo_ckpt: m_o/M_o.pt
+data:
+  split: splits/student_split.pt
+  forget: es/es_imagenet_mo/forget10.json
+  batch_size: 128
+  workers: 8
+train:
+  steps: 4800
+  lr: 3.0e-05
+  optimizer: AdamW
+  weight_decay: 0.0
+  trainable_blocks: 6
+  kd_temperature: 2.0
+  clip_grad: 1.0
+  lambda_feat_r: 2.0
+  lambda_kd_r: 2.0
+  lambda_ce_r: 0.0
+  lambda_remap_f: 1.0
+  lambda_ce_f: 0.5
+  lambda_cka_f: 2.0
+  lambda_cka_r: 2.0
+  cka_floor: 0.05
+  freeze_norm: true
+output:
+  save_path: models/det_check.pt

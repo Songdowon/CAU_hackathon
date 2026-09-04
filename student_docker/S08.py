@@ -24,6 +24,7 @@ CKA는 isotropic scaling과 orthogonal 변환에 불변이므로, forget feature
     python score_model.py models/R01.pt         # 실제 grader (제출 전 필수)
 """
 import argparse
+import math
 import copy
 import os
 import random
@@ -92,6 +93,118 @@ def batch_linear_cka(x, y):
     return ((x.T @ y) ** 2).sum() / (denom + 1e-12)
 
 
+def cka_target_floor(value, floor):
+    """Stop CKA_f pressure once minibatch CKA reaches the configured floor."""
+    try:
+        floor = float(floor)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("cka_floor must be a finite number in [0, 1]") from exc
+    if not math.isfinite(floor) or not 0.0 <= floor <= 1.0:
+        raise ValueError("cka_floor must be a finite number in [0, 1]")
+    if not torch.isfinite(value.detach()).all():
+        raise ValueError("CKA value must be finite")
+    return torch.relu(value - floor)
+
+def select_anchor_parameters(model, scope="last_6_blocks"):
+    """Return trainable parameters covered by the Fisher anchor."""
+    named = [(name, p) for name, p in model.named_parameters() if p.requires_grad]
+    if scope == "last_6_blocks":
+        return [(name, p) for name, p in named if name.startswith("backbone.blocks.")]
+    if scope == "trainable":
+        return named
+    raise ValueError(f"unsupported fisher_scope: {scope}")
+
+
+def _fisher_layer_key(name):
+    parts = name.split(".")
+    if "blocks" in parts:
+        idx = parts.index("blocks")
+        if idx + 1 < len(parts):
+            return ".".join(parts[:idx + 2])
+    return name.rsplit(".", 1)[0]
+
+
+def normalize_fisher_per_layer(fisher, eps=1e-12):
+    """Scale each block's diagonal Fisher so its elementwise mean is one."""
+    grouped = {}
+    for name, value in fisher.items():
+        key = _fisher_layer_key(name)
+        total, count = grouped.get(key, (None, 0))
+        value_sum = value.detach().float().sum()
+        grouped[key] = (value_sum if total is None else total + value_sum,
+                        count + value.numel())
+
+    normalized = {}
+    for name, value in fisher.items():
+        total, count = grouped[_fisher_layer_key(name)]
+        mean = total / max(count, 1)
+        normalized[name] = (value.detach().float().clone() if mean <= eps
+                            else value.detach().float() / mean)
+    return normalized
+
+
+def _classification_logits(model, x):
+    if hasattr(model, "backbone") and hasattr(model.backbone, "forward_features"):
+        return forward(model, x)[1]
+    output = model(x)
+    return output[1] if isinstance(output, tuple) else output
+
+
+def estimate_diagonal_fisher(model, loader, named_parameters, max_samples, device,
+                             normalize_per_layer=True):
+    """Estimate a batch empirical diagonal Fisher on retain data."""
+    named_parameters = list(named_parameters)
+    if not named_parameters:
+        raise ValueError("Fisher parameter set is empty")
+    if max_samples <= 0:
+        raise ValueError("fisher_samples must be positive")
+
+    params = [param for _, param in named_parameters]
+    fisher = {name: torch.zeros_like(param, dtype=torch.float32)
+              for name, param in named_parameters}
+    was_training = model.training
+    model.eval()
+    seen = 0
+    for batch in loader:
+        x, y = batch[:2]
+        remaining = max_samples - seen
+        if remaining <= 0:
+            break
+        x = x[:remaining].to(device, non_blocking=True)
+        y = y[:remaining].to(device, non_blocking=True)
+        batch_size = x.shape[0]
+        model.zero_grad(set_to_none=True)
+        logits = _classification_logits(model, x)
+        loss = F.cross_entropy(logits.float(), y)
+        grads = torch.autograd.grad(loss, params, allow_unused=True)
+        for (name, _), grad in zip(named_parameters, grads):
+            if grad is not None:
+                fisher[name].add_(grad.detach().float().square(), alpha=batch_size)
+        seen += batch_size
+
+    model.zero_grad(set_to_none=True)
+    model.train(was_training)
+    if seen == 0:
+        raise ValueError("retain loader produced no samples for Fisher estimation")
+    fisher = {name: value / seen for name, value in fisher.items()}
+    return normalize_fisher_per_layer(fisher) if normalize_per_layer else fisher
+
+
+def fisher_anchor_loss(named_parameters, anchor, fisher):
+    """EWC penalty: sum_i F_i * (theta_i - theta_i0)^2."""
+    loss = None
+    for name, param in named_parameters:
+        if name not in anchor or name not in fisher:
+            continue
+        weight = fisher[name].to(device=param.device, dtype=param.dtype)
+        reference = anchor[name].to(device=param.device, dtype=param.dtype)
+        term = (weight * (param - reference).square()).sum()
+        loss = term if loss is None else loss + term
+    if loss is None:
+        raise ValueError("Fisher anchor has no matching parameters")
+    return loss
+
+
 def forward(model, x):
     """grader와 동일한 경로: pre-logits feature와 logit을 함께 얻는다."""
     encoded = model.backbone.forward_features(x)
@@ -134,26 +247,6 @@ def main():
             num_workers=cfg["data"]["workers"], pin_memory=True)
         print(f"retain 앵커를 eval transform으로 교체 ({len(items)}장)")
 
-    # retain 보존이 "학습에 쓴 이미지"에만 통하는 암기 과적합이 관측됐다
-    # (학습 retain CKA_r 0.983 vs 처음 보는 retain 0.976). 앵커 이미지를 매번 더
-    # 크게 변형시켜 특정 이미지 암기를 방해하고, 클래스 표현 자체를 유지하도록 민다.
-    if t.get("retain_aug"):
-        from torch.utils.data import DataLoader
-
-        from imagenet_vit import MAE_FT, build_train_transform
-        from train_ft import ListDataset
-        from utils.data import load_split
-        recipe = dict(MAE_FT)
-        recipe["auto_augment"] = t["retain_aug"]
-        recipe["reprob"] = float(t.get("retain_reprob", recipe["reprob"]))
-        tf, _ = build_train_transform(model.data_config, recipe)
-        root, _, fl, released = load_split(cfg["data"]["split"], cfg["data"]["forget"])
-        items = [it for it in released if it[1] not in set(fl)]
-        loaders["retain"] = DataLoader(
-            ListDataset(items, root, tf), batch_size=cfg["data"]["batch_size"],
-            shuffle=True, num_workers=cfg["data"]["workers"], pin_memory=True)
-        print(f"retain 증강 강화: {t['retain_aug']}, reprob {recipe['reprob']}")
-
     # CKA_r은 retain 13,500장에서 측정되는데 앵커는 매 스텝 batch_size장만 본다.
     # forget 압력을 건드리지 않고 retain 표본만 늘려 제약 추정을 개선한다.
     if t.get("batch_retain"):
@@ -173,6 +266,26 @@ def main():
     total = sum(q.numel() for q in model.parameters())
     print(f"학습 파라미터 {sum(q.numel() for q in params)/1e6:.1f}M / 전체 {total/1e6:.1f}M")
 
+    anchor_named = select_anchor_parameters(model, t.get("fisher_scope", "last_6_blocks"))
+    anchor = {name: param.detach().clone() for name, param in anchor_named}
+    rng_python = random.getstate()
+    rng_numpy = np.random.get_state()
+    rng_torch = torch.random.get_rng_state()
+    rng_cuda = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+    try:
+        fisher = estimate_diagonal_fisher(
+            model, loaders["retain"], anchor_named,
+            int(t.get("fisher_samples", 4096)), device,
+            normalize_per_layer=bool(t.get("normalize_fisher_per_layer", True)))
+    finally:
+        random.setstate(rng_python)
+        np.random.set_state(rng_numpy)
+        torch.random.set_rng_state(rng_torch)
+        if rng_cuda is not None:
+            torch.cuda.set_rng_state_all(rng_cuda)
+    fisher_nonzero = sum(int(torch.count_nonzero(value)) for value in fisher.values())
+    print(f"Fisher anchor {len(anchor_named)} tensors / nonzero {fisher_nonzero:,}")
+
     opt = getattr(torch.optim, t.get("optimizer", "AdamW"))(
         params, lr=float(t["lr"]), weight_decay=float(t.get("weight_decay", 0.0)))
 
@@ -181,7 +294,7 @@ def main():
     temp = float(t.get("kd_temperature", 2.0))
     w = {k: float(t.get(f"lambda_{k}", d)) for k, d in
          [("feat_r", 1.0), ("kd_r", 1.0), ("ce_r", 0.0),
-          ("remap_f", 1.0), ("ce_f", 0.5), ("cka_f", 0.0), ("cka_r", 0.0)]}
+          ("remap_f", 1.0), ("ce_f", 0.5), ("cka_f", 0.0)]}
 
     # 학습 궤적 평균. 로컬 점수는 오르는데 private가 안 따라오는 상황이라
     # 마지막 스텝의 우연한 위치보다 평균 지점이 더 잘 일반화될 수 있다.
@@ -208,19 +321,6 @@ def main():
             perm = torch.randint(0, x_r.shape[0], (x_f.shape[0],), device=device)
             tgt_z, tgt_y = z_r_o[perm], y_r[perm]
 
-            # 개별 샘플 코사인은 "이 이미지의 feature를 유지하라"를 가르쳐서 처음 보는
-            # retain 이미지에서 무너진다(학습 retain CKA_r 0.983 vs 미본 0.976).
-            # 채점 지표 CKA_r 자체가 샘플 간 관계 통계이므로, 배치 CKA를 직접
-            # 최대화해 "구조를 유지하라"로 바꾼다. forget 쪽과 대칭이 맞는다.
-            l_cka_r = 1 - batch_linear_cka(z_r_u, z_r_o) if w["cka_r"] else z_r_u.sum() * 0
-
-            # retain 가드레일: CKA_r이 이미 충분히 높으면 앵커를 끈다. forget 쪽에
-            # 같은 구조(cka_floor)를 걸었을 때 3/3 짝지은 승리에 +0.002가 나왔다.
-            # 이미 지켜진 표현을 계속 당기는 힘은 forget 제거를 방해하는 데만 쓰인다.
-            guard = float(t.get("retain_guard", 0) or 0)
-            if guard:
-                with torch.no_grad():
-                    keep = (batch_linear_cka(z_r_u, z_r_o) < guard).float()
             l_feat_r = (1 - F.cosine_similarity(z_r_u, z_r_o, dim=1)).mean()
             l_kd_r = F.kl_div(F.log_softmax(logit_r_u / temp, 1),
                               F.softmax(logit_r_o / temp, 1),
@@ -233,17 +333,14 @@ def main():
             # 낮아지면(floor 이하) 더 밀지 않는다. 채점상 CKA_f를 0.02에서 0으로
             # 만들어봐야 final +0.006인 반면 CKA_r 개선은 +0.015 가치가 있다.
             if w["cka_f"]:
-                l_cka_f = batch_linear_cka(z_f_u, z_f_o)
                 floor = float(t.get("cka_floor", 0) or 0)
-                if floor:
-                    l_cka_f = torch.relu(l_cka_f - floor)
+                l_cka_f = cka_target_floor(batch_linear_cka(z_f_u, z_f_o), floor)
             else:
                 l_cka_f = z_f_u.sum() * 0
 
+            l_anchor = fisher_anchor_loss(anchor_named, anchor, fisher)
             loss_r = (w["feat_r"] * l_feat_r + w["kd_r"] * l_kd_r + w["ce_r"] * l_ce_r
-                      + w["cka_r"] * l_cka_r)
-            if guard:
-                loss_r = loss_r * keep
+                      + float(t.get("lambda_anchor", 0.0)) * l_anchor)
             loss_f = w["remap_f"] * l_remap_f + w["ce_f"] * l_ce_f + w["cka_f"] * l_cka_f
             loss = loss_r + loss_f
 
@@ -279,8 +376,7 @@ def main():
         if step % 50 == 0 or step == steps - 1:
             print(f"step {step:4d}/{steps} loss {loss.item():.4f} | feat_r {l_feat_r.item():.4f} "
                   f"kd_r {l_kd_r.item():.4f} remap_f {l_remap_f.item():.4f} "
-                  f"ce_f {l_ce_f.item():.4f} cka_f {float(l_cka_f):.4f} "
-                  f"cka_r {float(l_cka_r):.4f} | {time.time()-t0:.0f}s",
+                  f"ce_f {l_ce_f.item():.4f} cka_f {float(l_cka_f):.4f} | {time.time()-t0:.0f}s",
                   flush=True)
 
     out = cfg["output"]["save_path"]
