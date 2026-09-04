@@ -1,0 +1,11 @@
+{
+  "experiment": "S04",
+  "pid": 264374,
+  "launched_at": "2026-09-04T16:23:15.751094+00:00",
+  "command": [
+    "/opt/venv/bin/python3",
+    "-u",
+    "tools/S04_run.py"
+  ],
+  "workspace": "/root/cau-ai-hackathon-26/student_docker"
+}

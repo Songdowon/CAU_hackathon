@@ -1,6 +1,6 @@
 # Experiment organization
 
-- The experiment line beginning with S01.py uses uppercase IDs S01, S02, S03, and so on. S02 is the current layer-selection study; S02-* are its ablations. The next independent experiment is S03.
+- The experiment line beginning with S01.py uses uppercase IDs S01, S02, S03, and so on. S02 is the layer-selection study; S02-* are its ablations. S03 is the EMA/trajectory checkpoint-average study. S04 is the retain-prioritized Gradient Surgery study. The next independent experiment is S05.
 - Preserve the teammate's existing lowercase r001, r002, ... experiments and their files.
 - Read S_EXPERIMENTS.md for the S-line naming convention, existing results, and experiment record format.
 - Keep each S ID aligned across its script (S02.py), config (configs/S02.yaml), checkpoint (models/S02.pt), logs, and result tags.

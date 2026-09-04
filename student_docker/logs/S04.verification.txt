@@ -1,0 +1,50 @@
+tests
+학습 파라미터 0.0M / 전체 0.0M
+step    0/4 loss 2.6952 | feat_r 0.0000 kd_r 0.0000 remap_f 0.0024 ce_f 1.3856 cka_f 1.0000 | 0s
+step    3/4 loss 2.4303 | feat_r 0.0002 kd_r 0.0003 remap_f 0.0306 ce_f 0.7984 cka_f 1.0000 | 0s
+학습 파라미터 0.0M / 전체 0.0M
+step    0/4 loss 2.6952 | feat_r 0.0000 kd_r 0.0000 remap_f 0.0024 ce_f 1.3856 cka_f 1.0000 | 0s
+step    3/4 loss 2.4303 | feat_r 0.0002 kd_r 0.0003 remap_f 0.0306 ce_f 0.7984 cka_f 1.0000 | 0s
+test_bad_shapes_and_nonfinite_values_fail (test_s04.S04Tests.test_bad_shapes_and_nonfinite_values_fail) ... ok
+test_conflict_removes_only_opposing_forget_component (test_s04.S04Tests.test_conflict_removes_only_opposing_forget_component) ... ok
+test_control_two_backward_matches_joint_loss_gradient (test_s04.S04Tests.test_control_two_backward_matches_joint_loss_gradient) ... ok
+test_disabled_control_is_ordinary_gradient_sum (test_s04.S04Tests.test_disabled_control_is_ordinary_gradient_sum) ... ok
+test_existing_checkpoint_is_preserved (test_s04.S04Tests.test_existing_checkpoint_is_preserved) ... ok
+test_global_nonconflict_does_not_project_individual_blocks (test_s04.S04Tests.test_global_nonconflict_does_not_project_individual_blocks) ... ok
+test_projection_geometry_across_tensor_groups (test_s04.S04Tests.test_projection_geometry_across_tensor_groups) ... ok
+test_real_sgd_step_preserves_retain_on_conflicting_quadratic (test_s04.S04Tests.test_real_sgd_step_preserves_retain_on_conflicting_quadratic) ... ok
+test_reference_control_matches_existing_training_and_freezes_prefix (test_s04.S04Tests.test_reference_control_matches_existing_training_and_freezes_prefix) ... /root/cau-ai-hackathon-26/student_docker/S03_reference.py:175: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:835.)
+  f"ce_f {l_ce_f.item():.4f} cka_f {float(l_cka_f):.4f} | {time.time()-t0:.0f}s",
+ok
+test_unused_gradients_preserve_full_vector_projection (test_s04.S04Tests.test_unused_gradients_preserve_full_vector_projection) ... ok
+test_zero_and_tiny_retain_signal_skip_projection (test_s04.S04Tests.test_zero_and_tiny_retain_signal_skip_projection) ... ok
+test_complete_suite_uses_paired_settings_and_local_reports (test_s04_runner.RunnerTests.test_complete_suite_uses_paired_settings_and_local_reports) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.775s
+
+OK
+
+runner_cli
+usage: S04_run.py [-h]
+
+S04: locked CUDA smoke, matched control, gradient surgery and local
+validation.
+
+options:
+  -h, --help  show this help message and exit
+
+trainer_cli
+usage: S04.py [-h] [--config CONFIG] [--smoke]
+
+S04: retain-prioritized, one-way global gradient projection. Use
+tools/S04_run.py for the locked smoke test, matched control and evaluations.
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG
+  --smoke          4 steps at configured batch size, released data, distinct
+                   smoke outputs
+
+RETURN_CODES {"tests": 0, "runner_cli": 0, "trainer_cli": 0}

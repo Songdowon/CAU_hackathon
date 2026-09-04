@@ -93,11 +93,14 @@ def forward(model, x):
     return pre, model.head(pre)
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--config", default="configs/remap.yaml")
-    args = p.parse_args()
-    cfg = yaml.safe_load(open(args.config))
+def main(config=None, after_step=None):
+    if config is None:
+        p = argparse.ArgumentParser()
+        p.add_argument("--config", default="configs/remap.yaml")
+        args = p.parse_args()
+        cfg = yaml.safe_load(open(args.config))
+    else:
+        cfg = config
     set_seed(cfg["seed"])
     t = cfg["train"]
 
@@ -112,37 +115,6 @@ def main():
                           split_pt=cfg["data"]["split"],
                           forget_json=cfg["data"]["forget"])
 
-    # 채점은 증강 없는 eval transform에서 이뤄지는데 get_loaders는 retain에도
-    # RandAugment+random erasing을 건다. 앵커를 거는 지점과 측정 지점을 맞추면
-    # CKA_r이 더 잘 일반화될 수 있어 선택지로 둔다.
-    if t.get("retain_clean", False):
-        from torch.utils.data import DataLoader
-
-        from train_ft import ListDataset
-        from utils.data import load_split
-        root, _, fl, released = load_split(cfg["data"]["split"], cfg["data"]["forget"])
-        items = [it for it in released if it[1] not in set(fl)]
-        loaders["retain"] = DataLoader(
-            ListDataset(items, root, loaders["eval_transform"]),
-            batch_size=cfg["data"]["batch_size"], shuffle=True,
-            num_workers=cfg["data"]["workers"], pin_memory=True)
-        print(f"retain 앵커를 eval transform으로 교체 ({len(items)}장)")
-
-    # CKA_r은 retain 13,500장에서 측정되는데 앵커는 매 스텝 batch_size장만 본다.
-    # forget 압력을 건드리지 않고 retain 표본만 늘려 제약 추정을 개선한다.
-    if t.get("batch_retain"):
-        from torch.utils.data import DataLoader
-
-        from train_ft import ListDataset
-        from utils.data import load_split
-        root, _, fl, released = load_split(cfg["data"]["split"], cfg["data"]["forget"])
-        items = [it for it in released if it[1] not in set(fl)]
-        tf = loaders["eval_transform"] if t.get("retain_clean") else loaders["retain"].dataset.transform
-        loaders["retain"] = DataLoader(
-            ListDataset(items, root, tf), batch_size=int(t["batch_retain"]),
-            shuffle=True, num_workers=cfg["data"]["workers"], pin_memory=True)
-        print(f"retain 배치 {t['batch_retain']}로 확대")
-
     params = set_trainable(model, t.get("trainable_blocks", -1))
     total = sum(q.numel() for q in model.parameters())
     print(f"학습 파라미터 {sum(q.numel() for q in params)/1e6:.1f}M / 전체 {total/1e6:.1f}M")
@@ -156,11 +128,6 @@ def main():
     w = {k: float(t.get(f"lambda_{k}", d)) for k, d in
          [("feat_r", 1.0), ("kd_r", 1.0), ("ce_r", 0.0),
           ("remap_f", 1.0), ("ce_f", 0.5), ("cka_f", 0.0)]}
-
-    # 학습 궤적 평균. 로컬 점수는 오르는데 private가 안 따라오는 상황이라
-    # 마지막 스텝의 우연한 위치보다 평균 지점이 더 잘 일반화될 수 있다.
-    decay = float(t.get("ema_decay", 0) or 0)
-    ema = {k: v.detach().clone().float() for k, v in model.state_dict().items()} if decay else None
 
     model.train()
     t0 = time.time()
@@ -191,38 +158,16 @@ def main():
             l_ce_f = F.cross_entropy(logit_f_u, tgt_y)
             l_cka_f = batch_linear_cka(z_f_u, z_f_o) if w["cka_f"] else z_f_u.sum() * 0
 
-            loss_r = w["feat_r"] * l_feat_r + w["kd_r"] * l_kd_r + w["ce_r"] * l_ce_r
-            loss_f = w["remap_f"] * l_remap_f + w["ce_f"] * l_ce_f + w["cka_f"] * l_cka_f
-            loss = loss_r + loss_f
+            loss = (w["feat_r"] * l_feat_r + w["kd_r"] * l_kd_r + w["ce_r"] * l_ce_r
+                    + w["remap_f"] * l_remap_f + w["ce_f"] * l_ce_f + w["cka_f"] * l_cka_f)
 
         opt.zero_grad(set_to_none=True)
-        if t.get("grad_project", False):
-            # forget gradient에서 retain gradient와 충돌하는 성분을 제거한다.
-            # CKA_f와 CKA_r이 계속 맞바꿔지는 건 forget 업데이트가 retain 표현이
-            # 사는 방향으로도 일어나기 때문이다. 그 성분만 빼면 두 지표를 동시에
-            # 밀 수 있다.
-            loss_r.backward(retain_graph=True)
-            g_r = [p.grad.detach().clone() if p.grad is not None else None for p in params]
-            opt.zero_grad(set_to_none=True)
-            loss_f.backward()
-            pairs = [(p, gr) for p, gr in zip(params, g_r) if p.grad is not None and gr is not None]
-            dot = sum((p.grad * gr).sum() for p, gr in pairs)
-            if dot < 0:
-                nrm = sum((gr * gr).sum() for _, gr in pairs) + 1e-12
-                for p, gr in pairs:
-                    p.grad.sub_(gr, alpha=float(dot / nrm))
-            for p, gr in pairs:
-                p.grad.add_(gr)
-        else:
-            loss.backward()
+        loss.backward()
         if t.get("clip_grad"):
             torch.nn.utils.clip_grad_norm_(params, float(t["clip_grad"]))
         opt.step()
-
-        if ema is not None:
-            with torch.no_grad():
-                for k, v in model.state_dict().items():
-                    ema[k].mul_(decay).add_(v.float(), alpha=1 - decay)
+        if after_step is not None:
+            after_step(model, step + 1)
 
         if step % 50 == 0 or step == steps - 1:
             print(f"step {step:4d}/{steps} loss {loss.item():.4f} | feat_r {l_feat_r.item():.4f} "
@@ -230,12 +175,11 @@ def main():
                   f"ce_f {l_ce_f.item():.4f} cka_f {float(l_cka_f):.4f} | {time.time()-t0:.0f}s",
                   flush=True)
 
+    if config is not None:
+        return model
+
     out = cfg["output"]["save_path"]
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-    if ema is not None:
-        sd = model.state_dict()
-        model.load_state_dict({k: ema[k].to(sd[k].dtype) for k in sd}, strict=True)
-        print(f"EMA 가중치로 저장 (decay {decay})")
     torch.save({"model": model.state_dict()}, out)
     print(f"저장 완료: {out}  ({time.time()-t0:.0f}s)")
     print(f"로컬 점수: python tools/fasteval.py {out}")

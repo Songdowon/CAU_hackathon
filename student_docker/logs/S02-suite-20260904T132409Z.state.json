@@ -11,8 +11,12 @@
     "configs/S02-6.yaml",
     "configs/S02-7.yaml"
   ],
-  "completed": [],
-  "status": "probe_queued_or_running",
-  "current": "S02-probe",
-  "updated_at": "2026-09-04T13:24:09.841404+00:00"
+  "completed": [
+    "S02-3",
+    "S02"
+  ],
+  "status": "training_or_waiting_for_gpu",
+  "current": "S02-1",
+  "updated_at": "2026-09-04T14:43:38.327908+00:00",
+  "last_result": "results/S02.validation.json"
 }

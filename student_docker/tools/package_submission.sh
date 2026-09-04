@@ -22,8 +22,22 @@ cp -- "$ckpt" "$dest/model.pt"
     echo "# 제출: ${name}  (git $(git rev-parse --short HEAD))"
     echo "# 로컬 점수(public validation):"
     python tools/fasteval.py "$ckpt" 2>/dev/null | tail -3 | sed 's/^/#   /'
-    echo "# 사용한 config (configs/${name}.yaml):"
-    sed 's/^/#   /' "configs/${name}.yaml"
+    # 보간 모델(r017_a0.95 등)은 자체 config가 없으므로 베이스 실험 것을 쓴다.
+    base="${name%%_a[0-9]*}"
+    [ "$base" != "$name" ] && echo "# 위 가중치는 tools/interpolate.py로 M_o와 ${base}를 섞은 것: ${name#${base}_a} 비율"
+    if [ -f "configs/${base}.yaml" ]; then
+        echo "# 사용한 config (configs/${base}.yaml):"
+        sed 's/^/#   /' "configs/${base}.yaml"
+    else
+        # soup 모델은 자체 config가 없다. 재료 실험들의 config를 모두 싣는다.
+        echo "# 이 가중치는 tools/soup.py로 아래 실험들의 가중치를 평균한 것이다:"
+        for ing in ${base#soup_}; do :; done
+        for ing in $(echo "${base#soup_}" | tr '_' ' '); do
+            [ -f "configs/${ing}.yaml" ] || continue
+            echo "# --- configs/${ing}.yaml ---"
+            sed 's/^/#   /' "configs/${ing}.yaml"
+        done
+    fi
     echo
     cat unlearn_remap.py
 } > "$dest/unlearn_remap.py"

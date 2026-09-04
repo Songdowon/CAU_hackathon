@@ -8,6 +8,7 @@ GPU 1장을 둘이 공유하므로 flock으로 한 번에 하나만 돌게 강�
 """
 import argparse
 import fcntl
+import json
 import os
 import subprocess
 import sys
@@ -32,7 +33,7 @@ def headline(cfg_path):
     return first.lstrip("#").strip() if first.startswith("#") else ""
 
 
-def wait_for_gpu(limit_mib=2000, poll=30):
+def wait_for_gpu(limit_mib=8000, poll=30):
     """flock 밖에서 도는 남의 작업(팀원의 unlearn.py 등)이 GPU를 비울 때까지 대기.
 
     ponytail: 전체 메모리 사용량만 본다. PID별로 우리 것/남의 것을 가리려면
@@ -63,11 +64,12 @@ def run(cfg_path):
             raise SystemExit(f"[{name}] 학습 실패")
         print(train.stdout.strip().splitlines()[-1] if train.stdout.strip() else "", flush=True)
 
-        sys.path.insert(0, str(WS / "tools"))
-        import torch
-        import fasteval
-        device = torch.device("cuda")
-        r = fasteval.score(fasteval.load_ckpt(ckpt, device), device)
+        # 채점은 반드시 별도 프로세스로. in-process로 하면 이 프로세스가 CUDA
+        # 컨텍스트(약 2.6GB)를 계속 붙들어 wait_for_gpu가 자기 메모리를 보고
+        # 영원히 대기하는 교착이 생긴다.
+        out = subprocess.run([sys.executable, "tools/fasteval.py", ckpt, "--json"],
+                             capture_output=True, text=True, check=True)
+        r = json.loads(out.stdout.strip().splitlines()[-1])
 
     if not LOG.exists():
         LOG.write_text("# 실험 기록\n\n"

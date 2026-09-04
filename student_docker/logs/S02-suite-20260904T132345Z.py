@@ -21,8 +21,7 @@ state = {'run_id': RUN_ID, 'pid': os.getpid(), 'configs': CONFIGS, 'completed': 
 def update(**values):
     state.update(values, updated_at=datetime.datetime.now(datetime.timezone.utc).isoformat())
     temporary = STATE.with_suffix('.tmp')
-    temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2) + '
-')
+    temporary.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     temporary.replace(STATE)
     print(json.dumps(values, ensure_ascii=False), flush=True)
 
@@ -43,8 +42,7 @@ with open('/tmp/S02-suite.lock', 'a') as suite_lock:
                       'fasteval_sha256': hashlib.sha256((ROOT/'tools/fasteval.py').read_bytes()).hexdigest()}
             with result_path.open('x') as stream:
                 json.dump(record, stream, ensure_ascii=False, indent=2, allow_nan=False, default=float)
-                stream.write('
-')
+                stream.write('\n')
             state['completed'].append(name)
             update(last_result=str(result_path.relative_to(ROOT)))
         update(status='completed', current=None)

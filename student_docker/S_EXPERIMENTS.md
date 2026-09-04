@@ -7,10 +7,10 @@
 - 코드: S02.py / 설정: configs/S02.yaml / 모델: models/S02.pt.
 - 설정 첫 줄에는 실험 ID와 변경 목적을 적고, script: S02.py와 output.save_path: models/S02.pt를 지정한다.
 - 평가 결과와 로그에도 S02를 포함하고, 재실행은 시간이나 실행 번호를 덧붙여 과거 결과를 보존한다.
-- S02를 현재 레이어 선택 실험으로 사용하며, 다음 독립 실험 번호는 S03이다. 다른 가설/주요 설정 변경은 새 번호를 사용한다.
+- S02는 레이어 선택, S03은 EMA/체크포인트 평균 실험이다. 다음 독립 실험 번호는 S04이다. 다른 가설/주요 설정 변경은 새 번호를 사용한다.
 - unlearn.py는 복구된 대회 원본 템플릿으로 보존한다. S 실험은 별도 파일에서 진행한다.
 - GPU를 공유하므로 실행할 때는 기존 tools/run_exp.py의 GPU 잠금을 사용한다. 실행 예: python tools/run_exp.py configs/S02.yaml.
-- 이 문서의 명령은 다음 실행을 위한 안내이며, 이번 정리에서는 학습을 실행하지 않았다.
+- 최초 이름 정리 단계에서는 학습을 실행하지 않았다. 이후 실행과 결과는 각 실험 절에 기록한다.
 
 ## S01 — Retain CE + NegGrad
 
@@ -79,7 +79,7 @@
 ### 검증 및 실행
 
 CPU 단위 테스트 8개와 실제 M_o를 로드한 ViT 마스크 검증이 통과했다. 비연속 블록의 gradient 전달, 동결 파라미터 보존, gradient 비율 계산, RNG 복원, 중복 기록 보호, r014 마스크 일치를 확인했다.
-학습 점수는 아직 없으며 측정/학습 완료 후 기록한다.
+S02-3과 S02의 학습·평가 결과는 아래 초기 결과 재검토에 기록했다. 다른 대조군의 상태는 실행 로그에서 확인한다.
 
 독립 측정: python S02.py --config configs/S02.yaml --probe-only
 학습: python tools/run_exp.py configs/S02-3.yaml configs/S02.yaml
@@ -96,3 +96,93 @@ CPU 단위 테스트 8개와 실제 M_o를 로드한 ViT 마스크 검증이 통
 - 측정 후 S02-3 → S02 → S02-1 → S02-2 → S02-4 → S02-5 → S02-6 → S02-7 순서로 기존 tools.run_exp.run을 호출한다. 실패하면 나머지 실행을 중단하고 원인을 상태 파일과 로그에 남긴다.
 - 각 실험의 원시 로컬 평가 결과는 `results/<ID>.validation.json`, 요약은 `EXPERIMENTS.md`에 기록한다. 선택/학습 기록과 평가 완료 여부는 별도 파일로 구분한다.
 - 최초 실행 래퍼는 줄바꿈 인코딩 오류로 GPU 작업 전에 종료됐다. 문법 검사 후 수정본을 실행했으며 최초 로그는 보존했다.
+
+### S02 초기 결과 재검토 — 2026-09-05
+
+동일한 tools/fasteval.py의 public validation 수치로 비교한다. 정식 로컬 score_model.py 결과와는 별도로 표기한다.
+
+| 실험 | Acc_f (%) ↓ | Acc_r (%) ↑ | CKA_f_o ↓ | CKA_r_o ↑ | RUS_o ↑ | Final ↑ |
+|---|---:|---:|---:|---:|---:|---:|
+| r014 / S02-3 | 0.13 | 95.64 | 0.1043 | 0.9679 | 0.9304 | 0.9621 |
+| r015 | 0.33 | 95.64 | 0.0239 | 0.9254 | 0.9501 | 0.9716 |
+| S02 자동 선택 | 0.07 | 95.54 | 0.1272 | 0.9592 | 0.9139 | 0.9531 |
+| r017 | 0.13 | 95.61 | 0.0224 | 0.9675 | 0.9725 | 0.9840 |
+
+- S02-3은 r014와 seed/model/data/train 및 마지막 6블록+norm/head 조건이 같다. 표의 모든 지표가 표시 정밀도에서 일치하므로 기준 실험 재현으로 해석한다.
+- r015 역시 마지막 6블록+norm/head를 학습한다. r014 대비 차이는 lambda_feat_r와 lambda_kd_r가 각각 1에서 2로 증가한 것이다. 따라서 “r015 loss + S02-3 layer”는 이미 r015이며 새 결합 실험이 아니다.
+- RUS_o는 H(1-CKA_f_o, CKA_r_o)이므로 retain 보존만 나타내지 않는다. S02-3은 r015보다 retain CKA가 높지만 forget CKA도 높다. Acc_f가 더 낮다는 사실만으로 표현 수준의 삭제까지 더 좋다고 결론 내릴 수 없다.
+- 실제 선택 효과는 같은 loss의 S02 대 S02-3으로 비교한다. S02는 [4,5,7,8,9,12]번 블록을 선택했다(1-based). Final 차이는 -0.0090338441이며 forget CKA 악화(0.1043→0.1272)와 retain CKA 악화(0.9679→0.9592)가 함께 발생했다.
+- 확인된 결론은 seed=0, r014 손실, 초기 CE gradient 비율 상위 6블록 선택이 마지막 6블록보다 열세라는 것이다. 아직 layer-selective 접근 전체를 실패로 판정할 근거는 부족하다.
+- r017은 r015 설정에서 steps만 2400→4800으로 늘린다. 낮은 forget CKA를 유지하면서 retain CKA를 회복했다. 다음 실험의 비교 기준은 이미 개선된 r017 계열로 갱신한다.
+
+별도 정식 로컬 score_model.py 기록: r017=0.9839958567, r017_a0.95=0.9856048186. 후자는 0.95*r017 + 0.05*M_o 가중치 보간 모델이다. 이 수치는 public validation이며 공식 private leaderboard 점수가 아니다.
+
+근거: configs/r014.yaml, configs/r015.yaml, configs/r017.yaml, configs/S02-3.yaml, results/S02-3.selection.json, results/S02-3.validation.json, results/S02.selection.json, results/S02.validation.json, EXPERIMENTS.md, results/r017-validation-20260904T135220Z.json, results/r017_a0.95-validation-20260904T142731Z.json.
+
+검토 당시 S02-3과 S02의 학습·평가가 완료되었고, 기존 큐는 S02-1의 GPU 잠금을 기다리고 있었다. 이번 검토에서는 새 중복 실험을 추가하지 않았다. 실시간 상태는 기존 suite state/log를 확인한다.
+
+## S03 — EMA / 학습 경로의 체크포인트 평균 (2026-09-05)
+
+사용자가 지정한 세 번째 S 실험이다. 가설은 학습 후반의 가중치를 평균하면 마지막 한 시점보다 검증 성능이 안정될 수 있다는 것이다. private 성능 개선은 별도로 확인해야 하며 로컬 향상만으로 입증하지 않는다.
+
+### 한 번의 학습에서 비교하는 네 후보
+
+기준은 r017과 동일하다: M_o에서 시작, seed=0, 마지막 6블록+norm/head, AdamW, lr=3e-5, 4800 steps, batch=128, retain feature/KD 가중치 2/2, forget remap/CE/CKA 가중치 1/0.5/2. 기존 모델을 이어 학습하거나 원본 가중치와 보간하지 않는다.
+
+| 후보 | 정의 | 저장 경로 |
+|---|---|---|
+| S03-last | 4800번째 optimizer 업데이트 직후 가중치 | models/S03-last.pt |
+| S03-ema099 | step 2400에서 초기화, 이후 매 step beta=0.99 EMA | models/S03-ema099.pt |
+| S03-ema0999 | step 2400에서 초기화, 이후 매 step beta=0.999 EMA | models/S03-ema0999.pt |
+| S03 | step 3600/4000/4400/4800 가중치의 동일 가중 평균 | models/S03.pt |
+
+EMA 초기값은 step 2400의 학습된 가중치이며 M_o를 평균에 별도로 넣지 않는다. 관측 횟수는 EMA 각 2401회, 체크포인트 평균 4회다. 평균과 EMA는 학습에 다시 주입하지 않는다. 평균 구간/감쇠율은 평가 전에 고정했으며 r017의 학습률 스케줄을 유지한다. ViT는 LayerNorm을 사용하고 BatchNorm 통계 재추정은 필요하지 않다.
+
+### 구현·검증
+
+- S03.py가 EMA/평균과 저장을 담당한다. S03_reference.py는 기존 검증된 학습 코드의 고정 사본에 설정 전달·업데이트 후 관찰·모델 반환만 추가한다.
+- configs/S03.yaml에 모든 평균 설정과 출력 경로를 둔다. 과거 결과가 있으면 실행을 거부한다.
+- 원시 체크포인트 4개는 models/S03_checkpoints/step-003600.pt 등의 경로에 보존한다.
+- tests/test_s03.py의 7개 CPU 테스트: 손계산 평균/EMA, 초기·워밍업 제외, 원본 모델/RNG/gradient 보존, 스텝 누락·중복 거부, 기존 파일 보호, BatchNorm 거부, 실제 기준 loss loop의 관찰 전후 학습 결과 동일성.
+- 실제 M_o ViT에서도 네 출력의 strict load, 가중치 보존, r017 설정 동일성을 확인했다. 전체 학습 종료 시 실제 EMA/평균 횟수와 저장한 last의 모든 텐서가 반환된 최종 모델과 같은지 다시 검사한다.
+- PyTorch 2.8 AveragedModel을 사용한다: https://docs.pytorch.org/docs/2.8/generated/torch.optim.swa_utils.AveragedModel.html
+
+### 실행·결과 위치
+
+실행: python tools/S03_run.py --config configs/S03.yaml
+기존 tools.run_exp.run을 통해 GPU 잠금을 잡고 한 번 학습한다. 네 후보를 fasteval과 score_model.py로 각각 로컬 public validation 평가한다. 평가도 같은 GPU 잠금을 사용하며 별도 프로세스 종료로 CUDA 메모리를 반환한다.
+
+- 전체 상태: logs/S03.state.json
+- 실행 로그: logs/S03.runner.log
+- 학습 step/loss 로그: logs/S03.training.log
+- 평균 구간/관측 횟수/소스와 데이터 해시: results/S03.trajectory.json
+- 네 후보 전체 결과와 같은 학습의 last 대비 차이: results/S03.comparison.json 및 results/S03.comparison.md
+- 정식 로컬 채점 원본: results/S03*-validation-<timestamp>.json
+
+공식 제출은 이 실행에 포함되지 않는다. 현재 단계는 구현·검증 완료이며 실행 등록 상태는 아래에 기록한다. 원본 보간은 별도 가설로 남기고 이번 S03에 섞지 않는다.
+
+### S03 실행 등록
+
+- 등록: 2026-09-05 00:40 KST, PID 234291.
+- 확인 시 공유 GPU 잠금을 대기 중. logs/S03.runner.log에서 실제 학습 시작을 확인할 수 있다.
+- 학습과 네 후보의 로컬 평가가 연결되어 실행된다. 이번 등록 시점에는 S03 학습 점수가 없다.
+
+## S04 — Gradient Surgery (2026-09-05)
+
+- 목적: forget/retain gradient 충돌 제거가 r017의 retain/forget 표현 균형을 개선하는지 검증한다. CKA_r 저하의 원인이 충돌이라는 설명은 아직 가설이며, private 성능 향상도 미검증이다.
+- 기준 설정: r017, seed 0, M_o에서 새로 시작, 마지막 6 blocks + norm/head, AdamW lr 3e-5, weight decay 0, 4800 steps, batch 128, clip 1.0.
+- retain objective: 2 * feature cosine + 2 * KD (CE weight 0).
+- forget objective: 1 * remap cosine + 0.5 * remapped CE + 2 * minibatch CKA.
+- 방법: 모든 학습 파라미터를 하나의 벡터로 보아 d = dot(g_r, g_f)를 계산한다. d < 0이고 ||g_r|| >= 1e-8이면 g_f' = g_f - d / ||g_r||^2 * g_r. 최종 gradient는 g_r + g_f'. 이외에는 원래 합을 사용한다. retain gradient 자체는 유지한다.
+- S04-control: 동일한 두-gradient 계산 경로에서 투영만 끈 대조군. S04: 투영 활성화. EMA와는 결합하지 않은 별도 실험이다.
+- 원 논문의 대칭 PCGrad와 다른 retain 우선 단방향 변형이다. raw gradient 직교성은 AdamW 실제 업데이트의 retain 손실 감소나 평가 CKA_r 상승을 보장하지 않는다.
+- 진단: 매 step weighted gradient norm/cosine/dot, 충돌 여부, 투영 크기, loss를 CSV 기록. step 1과 매 100 step은 실제 AdamW 파라미터 변화와 g_r의 내적도 측정한다. 양수이면 해당 retain surrogate의 1차 변화는 증가 방향이다.
+- 검증: analytical/zero/tiny/None/nonfinite/SGD/control 동등성 및 원본 loss-loop 재현 검증 통과. 실행기 모의 검증은 smoke → control → surgery → 두 local full 평가의 순서와 기존 결과 보호를 확인한다. 검증 로그: logs/S04.verification.txt.
+- 실행: tools/S04_run.py. 먼저 기존 GPU lock 아래에서 CUDA 음수-dot 합성 사례와 실제 ViT 배치 128, 4 steps smoke를 실행한다. 통과 시 tools.run_exp.run으로 control과 surgery를 순차 학습/fast 평가하고, 각각 score_model.py의 전체 local public validation을 실행한다.
+- 소스/설정: S04.py, S04_reference.py, configs/S04.yaml, configs/S04-control.yaml. 원본 unlearn.py와 팀원의 r* 파일은 변경하지 않는다.
+- 체크포인트: models/S04-control.pt, models/S04.pt. smoke 결과는 models/S04-smoke.pt에 별도 저장한다.
+- 상태: logs/S04.state.json, logs/S04.runner.log. 학습 로그와 gradient CSV는 logs/S04*.training.log, logs/S04*.gradients.csv. 완료 시 results/S04.comparison.json 및 results/S04.comparison.md에 같은 대조군 대비 Acc_f, Acc_r, CKA_f, CKA_r, AUS, RUS_o, Final 차이를 기록한다.
+- 판단: CKA_r만이 아니라 forget CKA/accuracy와 Final의 동반 변화를 본다. single seed의 local 결과이며, private 개선 여부는 별도로 확인해야 한다.
+- 다음 독립 실험 ID: S05.
+
+실행 접수: 2026-09-05 01:23 KST, PID 264374. 확인 시 상태: smoke_or_waiting_for_gpu. 실제 GPU smoke와 학습/평가 완료 여부는 logs/S04.state.json 및 각 run report를 확인한다.

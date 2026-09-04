@@ -1,0 +1,8 @@
+{
+  "experiment": "S03",
+  "pid": 234291,
+  "launched_at": "2026-09-04T15:40:10.794372+00:00",
+  "log": "logs/S03.runner.log",
+  "state": "logs/S03.state.json",
+  "training_log": "logs/S03.training.log"
+}
