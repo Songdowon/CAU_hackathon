@@ -1,0 +1,123 @@
+name: unlearning-student-local
+
+x-validation-data-pins: &validation-data-pins
+  HF_STUDENT_REPO_ID: ${HF_STUDENT_REPO_ID:-cau-ai-hackathon/imagenet-released}
+  HF_STUDENT_REPO_REVISION: ${HF_STUDENT_REPO_REVISION:-dbd6208837a986ba32139a6275b30efb5ed071f5}
+  HF_STUDENT_ARCHIVE: ${HF_STUDENT_ARCHIVE:-student_docker.tar}
+  HF_STUDENT_EXPECTED_ARCHIVE_BYTES: ${HF_STUDENT_EXPECTED_ARCHIVE_BYTES:-15576883200}
+  HF_STUDENT_EXPECTED_ARCHIVE_SHA256: ${HF_STUDENT_EXPECTED_ARCHIVE_SHA256:-749bfe3f2313987f35b2155a7b17a3c0ad312a91733458e0047aa4a2262c29ec}
+  HF_STUDENT_EXPECTED_DATASET_REVISION: ${HF_STUDENT_EXPECTED_DATASET_REVISION:-3490c3295fcf00c192011e3d570db670275d1859a7a8ed91ae52eebfd6eb88b9}
+  HF_STUDENT_EXPECTED_RELEASED_IMAGES: "113566"
+  HF_STUDENT_EXPECTED_VALIDATION_IMAGES: "15000"
+  HF_STUDENT_EXPECTED_MODEL_BYTES: "343562706"
+
+services:
+  # This is the only service that receives the Hugging Face download token or
+  # write access to the canonical dataset volume.
+  dataset-init:
+    image: ${STUDENT_IMAGE:-hackathon/team-env:2026.09}
+    build:
+      context: ..
+      dockerfile: student_docker/Dockerfile
+    command: ["/usr/local/sbin/install-released-data"]
+    environment:
+      <<: *validation-data-pins
+      DATASET_ROOT: /dataset-source
+      HF_TOKEN_PATH: /run/secrets/hf_student_token
+      HF_XET_HIGH_PERFORMANCE: "1"
+    volumes:
+      - student-dataset-source-v2:/dataset-source
+    secrets:
+      - source: hf_student_token
+        target: hf_student_token
+        mode: "0400"
+    restart: "no"
+
+  data-copy:
+    image: ${STUDENT_IMAGE:-hackathon/team-env:2026.09}
+    build:
+      context: ..
+      dockerfile: student_docker/Dockerfile
+    command: ["/usr/local/sbin/copy-released-data"]
+    depends_on:
+      dataset-init:
+        condition: service_completed_successfully
+    environment:
+      SOURCE_DATA_ROOT: /dataset-source
+      TARGET_DATA_ROOT: /workspace/datasets
+    volumes:
+      - student-dataset-source-v2:/dataset-source:ro
+      - student-workspace:/workspace
+    network_mode: none
+    restart: "no"
+
+  student-sandbox:
+    image: ${STUDENT_IMAGE:-hackathon/team-env:2026.09}
+    build:
+      context: ..
+      dockerfile: student_docker/Dockerfile
+    container_name: unlearning-student-sandbox
+    depends_on:
+      data-copy:
+        condition: service_completed_successfully
+    environment:
+      <<: *validation-data-pins
+      DATASET_ROOT: /workspace/datasets
+      STUDENT_DATA_MODE: verify-ready
+      API_KEY_HEADER_NAME: ${API_KEY_HEADER_NAME:-X-API-Key}
+      CODE_SERVER_PUBLIC_PORT: ${CODE_SERVER_PORT:-8080}
+      TEAM_ID: ${TEAM_ID:-team001}
+      GRADING_SERVER_URL: ${GRADING_SERVER_URL:-https://grading.example.invalid}
+      GRADING_SERVER_ALLOW_HTTP: "0"
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    gpus: all
+    ports:
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${STUDENT_WEB_PORT:-80}:80"
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${STUDENT_API_PORT:-8000}:8000"
+      - "${HOST_BIND_ADDRESS:-127.0.0.1}:${CODE_SERVER_PORT:-8080}:8080"
+    volumes:
+      - student-workspace:/workspace
+      # A separate root-owned volume makes immutable snapshot collection and
+      # backup independent of participant workspace lifecycle.
+      - student-submissions:/workspace/submissions
+    secrets:
+      - source: code_server_password
+        target: code_server_password
+        mode: "0400"
+      - source: student_api_key
+        target: student_api_key
+        mode: "0400"
+      - source: submit_password
+        target: submit_password
+        mode: "0400"
+      - source: grading_api_token
+        target: grading_api_token
+        mode: "0400"
+    shm_size: 8gb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      # Avoid declaring the service unhealthy while it verifies the trusted
+      # dataset-init marker and large model/cache assets on a cold volume.
+      start_period: 10m
+
+volumes:
+  student-workspace:
+  student-dataset-source-v2:
+  student-submissions:
+
+secrets:
+  # Host paths are deployment inputs. Never commit the files below.
+  hf_student_token:
+    file: ${HF_STUDENT_TOKEN_FILE:-../secrets/hf_student_token}
+  code_server_password:
+    file: ${CODE_SERVER_PASSWORD_FILE:-../secrets/code_server_password}
+  student_api_key:
+    file: ${STUDENT_API_KEY_FILE:-../secrets/student_api_key}
+  submit_password:
+    file: ${SUBMIT_PASSWORD_FILE:-../secrets/submit_password}
+  grading_api_token:
+    file: ${GRADING_API_TOKEN_FILE:-../secrets/grading_api_token}

@@ -1,0 +1,60 @@
+# Local agent worktrees
+.worktrees/
+
+# Delivery archives and extracted duplicates (tens of GB)
+archive/
+
+# Local/offline backup inputs and Hugging Face caches
+*.tar
+*.tar.*
+*.safetensors
+*.ckpt
+.cache/
+.huggingface/
+student_docker/.local/
+student_docker/.dataset-install.*/
+
+# Competition datasets and generated/submitted models
+student_docker/dataset_manifest.json
+student_docker/imagenet_released/**
+!student_docker/imagenet_released/PLACEHOLDER.md
+student_docker/m_o/
+student_docker/splits/
+student_docker/validation_cache/
+student_docker/models/
+student_docker/results/
+student_docker/submissions/
+grading_docker/imagenet_subset/
+*.pt
+*.pth
+*.npz
+
+# Runtime state
+leaderboard.db
+leaderboard.db-*
+*.sqlite
+*.sqlite3
+*.log
+
+# Python/editor/build noise
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.venv/
+venv/
+.idea/
+.vscode/
+.DS_Store
+
+# Local secrets (keep checked-in examples/templates instead)
+.env
+.env.*
+!.env.example
+secrets/*
+!secrets/README.md
+runpod/teams-config.json
+eval_server/teams.production.json
+*.local.json

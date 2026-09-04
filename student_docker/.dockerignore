@@ -1,0 +1,18 @@
+# The released dataset, model and split are installed into a named volume by
+# student-data-init. Never send host copies to the Docker build context.
+imagenet_released/
+m_o/
+splits/
+models/
+results/
+submissions/
+_e2e_models/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+tests/
+build.log
+*.pt
+*.pth
+*.py[cod]
+.DS_Store

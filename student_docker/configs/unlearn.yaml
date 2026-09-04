@@ -1,0 +1,26 @@
+# 재현성: 이번 실행의 seed와 하이퍼파라미터는 전부 이 파일 한 곳에서 관리합니다.
+# 튜닝하는 값은 unlearn.py에 하드코딩하지 말고 여기에 두세요. 그래야 같은
+# config로 다시 돌렸을 때 동일한 제출물이 재현됩니다.
+seed: 0
+
+model:
+  arch: vit_base_patch16_224.mae   # 고정 (변경 금지 - 채점 서버와 동일해야 함)
+  num_classes: 100                 # 고정 (변경 금지)
+  mo_ckpt: m_o/M_o.pt              # unlearning의 출발점이 되는 원본 모델
+
+data:
+  split: splits/student_split.pt          # released + combined validation 정의
+  forget: es/es_imagenet_mo/forget10.json # 잊어야 할 10개 클래스 목록
+  batch_size: 128
+  workers: 8
+
+# 아래 train 항목들은 자유롭게 바꾸며 실험하세요.
+# (본인 방법에 필요한 항목을 추가해도 됩니다)
+train:
+  epochs: 2
+  lr: 1.0e-5
+  optimizer: AdamW
+  weight_decay: 0.0
+
+output:
+  save_path: models/experiment-001.pt  # 실험마다 고유한 이름 사용

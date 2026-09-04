@@ -1,0 +1,39 @@
+{
+  "wnid": [
+    "n01558993",
+    "n01950731",
+    "n02129604",
+    "n02256656",
+    "n02361337",
+    "n02799071",
+    "n03649909",
+    "n04162706",
+    "n04252225",
+    "n04371430"
+  ],
+  "name": [
+    "robin",
+    "sea slug",
+    "tiger",
+    "cicada",
+    "marmot",
+    "baseball",
+    "lawn mower",
+    "seat belt",
+    "snowplow",
+    "swimming trunks"
+  ],
+  "class_idx_std": [
+    15,
+    115,
+    292,
+    316,
+    336,
+    429,
+    621,
+    785,
+    803,
+    842
+  ],
+  "n_images": 13000
+}
