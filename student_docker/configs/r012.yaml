@@ -1,4 +1,4 @@
-# r006 — 미니배치 CKA 직접 최소화 (중단분 재실행)
+# r012 — lr 3e-5 + 스텝 4800 (승자 조합 확장)
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -10,8 +10,8 @@ data:
   batch_size: 128
   workers: 8
 train:
-  steps: 400
-  lr: 1.0e-05
+  steps: 4800
+  lr: 3.0e-05
   optimizer: AdamW
   weight_decay: 0.0
   trainable_blocks: 6
@@ -22,6 +22,6 @@ train:
   lambda_ce_r: 0.0
   lambda_remap_f: 1.0
   lambda_ce_f: 0.5
-  lambda_cka_f: 2.0
+  lambda_cka_f: 0.0
 output:
-  save_path: models/r006.pt
+  save_path: models/r012.pt

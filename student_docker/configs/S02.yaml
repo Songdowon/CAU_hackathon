@@ -1,4 +1,4 @@
-# r006 — 미니배치 CKA 직접 최소화 (중단분 재실행)
+# S02 — CE-gradient ratio로 선택한 6블록 + norm/head
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -10,8 +10,8 @@ data:
   batch_size: 128
   workers: 8
 train:
-  steps: 400
-  lr: 1.0e-05
+  steps: 2400
+  lr: 3.0e-05
   optimizer: AdamW
   weight_decay: 0.0
   trainable_blocks: 6
@@ -24,4 +24,17 @@ train:
   lambda_ce_f: 0.5
   lambda_cka_f: 2.0
 output:
-  save_path: models/r006.pt
+  save_path: models/S02.pt
+  selection_report: results/S02.selection.json
+script: S02.py
+selection:
+  mode: gradient_ratio
+  count: 6
+  train_norm: true
+  train_head: true
+  probe:
+    batch_size: 32
+    batches: 8
+    seed: 1702
+    epsilon: 1.0e-08
+    min_norm: 1.0e-08

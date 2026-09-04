@@ -23,6 +23,7 @@ student_docker/splits/
 student_docker/validation_cache/
 student_docker/models/
 student_docker/cache/
+student_docker/submission_ready/
 student_docker/results/
 student_docker/submissions/
 grading_docker/imagenet_subset/

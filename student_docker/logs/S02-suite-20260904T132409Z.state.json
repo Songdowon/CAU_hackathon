@@ -1,0 +1,18 @@
+{
+  "run_id": "S02-suite-20260904T132409Z",
+  "pid": 145198,
+  "configs": [
+    "configs/S02-3.yaml",
+    "configs/S02.yaml",
+    "configs/S02-1.yaml",
+    "configs/S02-2.yaml",
+    "configs/S02-4.yaml",
+    "configs/S02-5.yaml",
+    "configs/S02-6.yaml",
+    "configs/S02-7.yaml"
+  ],
+  "completed": [],
+  "status": "probe_queued_or_running",
+  "current": "S02-probe",
+  "updated_at": "2026-09-04T13:24:09.841404+00:00"
+}

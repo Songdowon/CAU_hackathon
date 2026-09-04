@@ -1,4 +1,4 @@
-# r006 — 미니배치 CKA 직접 최소화 (중단분 재실행)
+# S02-4 — 마지막 8블록 + norm/head
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -10,8 +10,8 @@ data:
   batch_size: 128
   workers: 8
 train:
-  steps: 400
-  lr: 1.0e-05
+  steps: 2400
+  lr: 3.0e-05
   optimizer: AdamW
   weight_decay: 0.0
   trainable_blocks: 6
@@ -24,4 +24,11 @@ train:
   lambda_ce_f: 0.5
   lambda_cka_f: 2.0
 output:
-  save_path: models/r006.pt
+  save_path: models/S02-4.pt
+  selection_report: results/S02-4.selection.json
+script: S02.py
+selection:
+  mode: last
+  count: 8
+  train_norm: true
+  train_head: true

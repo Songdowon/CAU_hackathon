@@ -1,11 +1,12 @@
-"""Experiment S01: Retain CE + NegGrad.
+"""Unlearning 스켈레톤 코드.
 
-M_o에서 시작해 retain CE - alpha * forget CE를 최소화합니다.
-하이퍼파라미터와 저장 경로는 configs/unlearn.yaml에서 관리합니다.
+알고리즘 본체를 제외한 나머지는 전부 미리 연결해 두었습니다.
+(config/seed 설정, M_o 로딩, retain/forget 데이터로더, 채점 서버가 요구하는
+저장 포맷) 아래 TODO 블록만 채우면 됩니다.
 
     python unlearn.py --config configs/unlearn.yaml
-    python validate_submission.py --ckpt models/S01_retain_ce_neggrad.pt
-    python score_model.py models/S01_retain_ce_neggrad.pt
+    python validate_submission.py --ckpt models/experiment-001.pt
+    python score_model.py models/experiment-001.pt
 """
 import argparse
 import os
@@ -13,7 +14,6 @@ import random
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 import yaml
 
 from imagenet_vit import ViTWrapper
@@ -52,60 +52,27 @@ def main():
                           split_pt=cfg["data"]["split"],
                           forget_json=cfg["data"]["forget"])
 
-    # ============================================================
-    # Experiment S01
-    # Title: Retain CE + NegGrad
-    # Goal: Forget 성능을 유지하면서 retain accuracy 붕괴를 완화
-    # Change:
-    # - forget set: NegGrad (gradient ascent)
-    # - retain set: normal CE
-    # - forget loss weight alpha = 0.1
-    # ============================================================
-    train_cfg = cfg["train"]
-    if train_cfg["optimizer"] != "AdamW":
-        raise ValueError("Experiment S01 requires train.optimizer: AdamW")
-    epochs = int(train_cfg["epochs"])
-    alpha = float(train_cfg["forget_weight"])
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=float(train_cfg["lr"]),
-        weight_decay=float(train_cfg["weight_decay"]))
-
-    if len(loaders["forget"]) == 0 or len(loaders["retain"]) == 0:
-        raise ValueError("S01 requires non-empty forget and retain loaders")
-
-    model.train()
-    for epoch in range(epochs):
-        retain_iter = iter(loaders["retain"])
-        total_sum = retain_sum = forget_sum = 0.0
-        batches = 0
-        for x_forget, y_forget in loaders["forget"]:
-            try:
-                x_retain, y_retain = next(retain_iter)
-            except StopIteration:
-                retain_iter = iter(loaders["retain"])
-                x_retain, y_retain = next(retain_iter)
-
-            x_retain, y_retain = x_retain.to(device), y_retain.to(device)
-            x_forget, y_forget = x_forget.to(device), y_forget.to(device)
-            optimizer.zero_grad(set_to_none=True)
-            with torch.autocast(device.type, dtype=torch.bfloat16,
-                                enabled=device.type == "cuda"):
-                retain_loss = F.cross_entropy(model(x_retain), y_retain)
-                forget_loss = F.cross_entropy(model(x_forget), y_forget)
-                total_loss = retain_loss - alpha * forget_loss
-            total_loss.backward()
-            optimizer.step()
-
-            total_sum += total_loss.item()
-            retain_sum += retain_loss.item()
-            forget_sum += forget_loss.item()
-            batches += 1
-
-        print(f"[S01] epoch {epoch + 1}/{epochs} "
-              f"total_loss={total_sum / batches:.6f} "
-              f"retain_ce={retain_sum / batches:.6f} "
-              f"forget_ce={forget_sum / batches:.6f} "
-              f"batches={batches}", flush=True)
+    # ---------------------------------------------------------------- #
+    # TODO: 여기에 본인의 unlearning 방법을 구현하세요.
+    #
+    #   loaders["forget"]         -- 잊어야 할 클래스들의 DataLoader (image, label)
+    #   loaders["retain"]         -- 유지해야 할 클래스들의 DataLoader (image, label)
+    #   loaders["forget_labels"]  -- 잊어야 할 10개 클래스의 라벨 id 리스트
+    #   model                     -- M_o 상태로 시작합니다. 이 모델을 그대로
+    #                                학습시키거나, state_dict를 복사해 새 모델을
+    #                                만들어 사용해도 됩니다.
+    #
+    # 점수는 (1) forget 클래스를 얼마나 잘 지웠는지와 (2) retain 클래스 성능을
+    # 얼마나 잘 보존했는지를 함께 봅니다. 자세한 지표 정의는 README.md의
+    # "평가 지표" 절을 참고하세요.
+    #
+    # 주의: classifier head만 건드려서 forget 클래스의 logit을 숨기는 방식은
+    # 정확도상으로는 완벽해 보여도, 모델 내부 표현(representation)을 실제로
+    # 바꾸지 않았기 때문에 표현 유사도 지표(RUS)에서 매우 낮은 점수를 받습니다.
+    # 어떤 클래스를 잊어야 하는지, 현재 M_o가 그 클래스들을 어떻게 분류하고
+    # 있는지는 walkthrough.ipynb에서 직접 확인할 수 있습니다.
+    # ---------------------------------------------------------------- #
+    raise NotImplementedError("위 TODO 블록에 unlearning 방법을 구현하세요")
 
     os.makedirs(os.path.dirname(cfg["output"]["save_path"]) or ".", exist_ok=True)
     torch.save({"model": model.state_dict()}, cfg["output"]["save_path"])

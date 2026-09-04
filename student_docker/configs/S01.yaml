@@ -1,7 +1,9 @@
+# Experiment S01: Retain CE + NegGrad
 # 재현성: 이번 실행의 seed와 하이퍼파라미터는 전부 이 파일 한 곳에서 관리합니다.
-# 튜닝하는 값은 unlearn.py에 하드코딩하지 말고 여기에 두세요. 그래야 같은
+# 튜닝하는 값은 S01.py에 하드코딩하지 말고 여기에 두세요. 그래야 같은
 # config로 다시 돌렸을 때 동일한 제출물이 재현됩니다.
 seed: 0
+script: S01.py
 
 model:
   arch: vit_base_patch16_224.mae   # 고정 (변경 금지 - 채점 서버와 동일해야 함)
@@ -24,4 +26,4 @@ train:
   forget_weight: 0.1
 
 output:
-  save_path: models/S01_retain_ce_neggrad.pt  # 실험마다 고유한 이름 사용
+  save_path: models/S01.pt  # 실험마다 고유한 이름 사용

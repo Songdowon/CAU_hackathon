@@ -32,6 +32,17 @@ def headline(cfg_path):
     return first.lstrip("#").strip() if first.startswith("#") else ""
 
 
+def wait_for_gpu(limit_mib=2000, poll=30):
+    """flock 밖에서 도는 남의 작업(팀원의 unlearn.py 등)이 GPU를 비울 때까지 대기.
+
+    ponytail: 전체 메모리 사용량만 본다. PID별로 우리 것/남의 것을 가리려면
+    복잡해지는데, 어차피 flock이 우리 큐를 하나로 묶어주므로 그럴 이유가 없다."""
+    q = ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"]
+    while int(subprocess.check_output(q, text=True).split()[0]) > limit_mib:
+        print("  GPU 사용 중 — 대기", flush=True)
+        time.sleep(poll)
+
+
 def run(cfg_path):
     cfg = yaml.safe_load(open(cfg_path))
     ckpt = cfg["output"]["save_path"]
@@ -41,6 +52,7 @@ def run(cfg_path):
     with open(LOCK, "w") as lock:
         print(f"[{name}] GPU 대기 중...", flush=True)
         fcntl.flock(lock, fcntl.LOCK_EX)
+        wait_for_gpu()
         print(f"[{name}] 학습 시작", flush=True)
         t0 = time.time()
         train = subprocess.run([sys.executable, script, "--config", str(cfg_path)],

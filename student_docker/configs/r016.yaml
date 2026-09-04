@@ -1,4 +1,4 @@
-# r006 — 미니배치 CKA 직접 최소화 (중단분 재실행)
+# r016 — r015 손실구성 + 느리게 오래 (lr 1e-5, 7200스텝) — CKA_r 회복
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -10,18 +10,18 @@ data:
   batch_size: 128
   workers: 8
 train:
-  steps: 400
+  steps: 7200
   lr: 1.0e-05
   optimizer: AdamW
   weight_decay: 0.0
   trainable_blocks: 6
   kd_temperature: 2.0
   clip_grad: 1.0
-  lambda_feat_r: 1.0
-  lambda_kd_r: 1.0
+  lambda_feat_r: 2.0
+  lambda_kd_r: 2.0
   lambda_ce_r: 0.0
   lambda_remap_f: 1.0
   lambda_ce_f: 0.5
   lambda_cka_f: 2.0
 output:
-  save_path: models/r006.pt
+  save_path: models/r016.pt
