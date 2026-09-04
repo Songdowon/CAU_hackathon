@@ -1,0 +1,8 @@
+# soup4_relf — greedy soup(tools/greedy_soup.py)이 선택한 4개 균등 평균.
+# r019에서 시작해 relf_seed0 → s06_seed0 → S03 순으로 추가하며 매번 개선됐다.
+recipe:
+  - configs/r019.yaml        # lr 3e-5, 7200 steps, CKA 2.0 — 강한 forget 삭제 (CKA_f 0.0042)
+  - configs/relf_seed0.yaml  # rel + forget 압력 강화 (CKA_f 0.0092, CKA_r 0.9803)
+  - configs/s06_seed0.yaml   # CKA floor + norm 동결 — retain 보호 (CKA_r 0.9773)
+  - configs/S03.yaml         # 팀원: r017 궤적 체크포인트 평균
+build: python tools/soup.py models/r019.pt models/relf_seed0.pt models/s06_seed0.pt models/S03.pt

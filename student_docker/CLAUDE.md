@@ -111,34 +111,35 @@ final_score = harmonic(AUS, RUS_o)
   반드시 "이미 학습된 원본 모델"에서 unlearning을 수행해야 함 — from-scratch 재학습 금지.
 - 제출물: **① Unlearning된 모델 가중치 ② 코드**
 
-## 🚨 공식 제출 프로세스 — 횟수 제한 있음!
+## 공식 제출 프로세스 (실측 확인 완료 — 대회 중 규칙이 변경됨)
 
-- 공식 제출은 **최대 10회**까지만 가능하고, **중앙 서버가 업로드를 완전히 검증했을 때만 1회 차감**됨
-  (즉 형식 오류로 실패하면 안 깎이는 것으로 보이지만, 확실친 않으니 함부로 낭비하지 말 것)
-- 방법 1 — 학생 웹 페이지에서 `models/` 바로 아래 파일명(예: `experiment-001.pt`)을 입력
-- 방법 2 — API 직접 호출:
-  ```bash
-  curl -X POST http://localhost/api/submit \
-    -H 'Content-Type: application/json' \
-    -d '{"submit_password":"발급값","model_filename":"experiment-001.pt"}'
-  ```
-  결과는 `submission UUID`로 받고 `curl http://localhost/api/submissions/<uuid>`로 상태 조회 (학생 웹이 자동 polling도 함)
-- **중앙 서버는 public validation이 아니라 private test set 기준 AUS/RUS_o 조화평균을 반환** — 최종 순위는 이 값 기준.
-- ⚠️ **`submit_password`는 이 채팅에 붙여넣지 마세요** — 저는 그걸로 대신 제출할 수도 없고, 채팅에 남기지 않는 게 안전합니다.
-- **전략: 로컬 `score_model.py`로 public validation 점수를 충분히 확인하고 확신이 설 때만 공식 제출을 아껴서 쓸 것.** 24시간 안에 10번이면 실험 사이클 대비 넉넉하지 않음.
+- **제출 방법: `~/submissions/`(= `/mnt/Team8_db504`) 바로 아래에 가중치와 코드를 평평하게 둔다.**
+  주최측이 수거해 대시보드에 반영한다. 하위 폴더로 두면 인식되지 않는다.
+  API(`/api/submit`)와 학생 웹페이지는 이 컨테이너에 설정돼 있지 않으므로 쓰지 않는다.
+- **제출 한도는 30회**(당초 안내된 10회에서 변경). 채점은 **실시간**이며, 당초의
+  "10:00부터 매시간 1회"는 폐기됐다. 배치 후 2~5분이면 리더보드에 반영된다.
+- **리더보드는 팀별 최고점만 기록한다.** 낮은 점수를 제출해도 기존 기록이 깎이지
+  않으므로, 제출의 유일한 비용은 슬롯이다.
+- 리더보드 조회: `https://api.minds.ai.kr/scores` (전체), `https://api.minds.ai.kr/team/<팀명>` (우리 이력).
+  웹 UI는 `https://hackathon2026.minds.ai.kr/`.
+- **제출은 매번 사용자 승인을 받고 실행한다.** 검증·패키징까지만 하고 실행 여부를 묻는다.
 
-## 아직 확인 안 된 것
+## 실험 도구 (이번 대회에서 만든 것들)
 
-- [x] ~~데이터셋 상세 스펙~~ → `dataset_manifest.json` / `refs.pt`로 확인됨
-- [x] ~~베이스라인 코드 내용~~ → `ga_example.py` = 의도적으로 약한 NegGrad baseline
-- [x] ~~레포/작업 디렉토리 구조~~ → `student_docker/`가 실제 작업 디렉토리로 확인됨
-- [x] ~~제출 프로세스~~ → 학생 웹페이지 또는 API, 최대 10회 (위 섹션 참고)
-- [x] ~~`configs/unlearn.yaml` 내용~~ → 확인됨 (위 섹션 참고)
-- [x] ~~`grading_docker/score_unlearning.py` 내용~~ → **AUS/RUS_o/final_score 정확한 수식 확인 완료** (위 평가방식 섹션 참고)
-- [x] ~~`refs.pt`의 `reference_accuracy` 실제 숫자값~~ → `{'acc_f': 0.0, 'acc_r': 95.89876543209876}` 확인됨
-- [ ] `refs.pt`의 `forget_labels`와 `es/es_imagenet_mo/forget10.json`이 같은 10개 클래스를 가리키는지 교차 검증
-- [ ] `~/submissions`(`/mnt/Team8_db504`) 폴더가 공식 제출 프로세스와 별개인지, 코드 백업용인지
-- [ ] 외부 데이터/사전학습 가중치 사용 가능 여부
+| 도구 | 용도 |
+|---|---|
+| `tools/fasteval.py` | validation 15,000장을 fp16으로 캐시해 **6초** 채점 (원본 `score_model.py`는 1.5~4분). 실제 grader와 final 기준 2.4e-4 이내 일치 |
+| `tools/run_exp.py` | flock으로 GPU 직렬화, 남의 작업 중이면 대기, 결과를 `EXPERIMENTS.md`에 자동 기록, 실행별 로그를 `logs/<이름>.train.log`에 보존 |
+| `tools/mkcfg.py` | 점 표기 오버라이드로 sweep config 생성 |
+| `tools/greedy_soup.py` | 재료를 하나씩 추가하며 개선될 때만 채택하는 앙상블 탐색 (학습 불필요) |
+| `tools/soup.py` / `soup_search.py` | 균등 / 가중치 탐색 앙상블 |
+| `tools/robust_select.py` | validation A/B 절반 분할로 후보의 표본 민감도 측정 |
+| `tools/interpolate.py` | M_o와의 가중치 보간 스캔 |
+| `tools/package_submission.sh` | 구조 검증 → `~/submissions`에 평평하게 배치 (`--submit`) |
+
+**실험 실행은 반드시 `tools/run_exp.py`를 통한다.** 직접 실행하면 GPU가 충돌하고
+결과가 기록되지 않는다. 그리고 여러 큐가 같은 로그 파일에 append하면 줄이 섞여
+결과를 잘못 읽는 사고가 두 번 났으므로, 큐마다 로그 파일을 분리한다.
 
 ## 작업 원칙
 
@@ -148,3 +149,37 @@ final_score = harmonic(AUS, RUS_o)
 - **Acc_f는 0%에 가까울수록 좋음이 확정됨** (`reference_acc_f = 0.0`이라 gap = acc_f/100). **Acc_r은 95.9% 밑으로 떨어뜨리지 않는 게 목표** — 이 두 값의 트레이드오프가 AUS의 핵심.
 - 실험할 때마다 Acc_f, Acc_r, CKA_f, CKA_r, 최종 점수를 `EXPERIMENTS.md`에 기록.
 - 시간이 24시간으로 매우 짧으므로, 완벽한 구현보다 **제출 가능한 baseline을 먼저 끝까지 돌리는 것**을 최우선으로.
+## 이번 대회에서 실측으로 확인한 것 (다음 세션에서 재유도하지 말 것)
+
+**방법론**
+- **NegGrad류(forget만 ascent)는 retain이 붕괴해 0.118에 그친다.** 핵심은 "잊게 하는 것"이
+  아니라 "잊게 하면서 나머지를 안 건드리는 것"이다.
+- 우리 방법은 **forget 이미지를 매 스텝 무작위 retain 파트너의 teacher feature/label로
+  재매핑**한다. CKA가 scale·rotation 불변이라 feature를 줄이거나 회전시켜선 안 떨어지고,
+  샘플 간 2차 구조 자체를 바꿔야 하기 때문이다.
+- **효과가 확인된 축**: 스텝 수(4800이 최적, 7200은 손해), lr 3e-5, 미니배치 CKA 직접
+  최소화, 뒤쪽 6블록만 학습, CKA floor(포화 후 forget 압력 차단), final norm 동결,
+  관계 기반 retain 앵커(rel), forget 압력 강화(relf), EMA 0.99, 가중치 앙상블.
+- **효과가 없거나 역효과인 축**: 전체 블록 학습, 학습 범위 K=2, retain 앵커에 eval
+  transform, 증강 강화(일반화 갭 3.6배 악화), gradient 투영(S04), Fisher 앵커(S08,
+  −0.015), retain 복구 학습(Acc_f가 68%까지 되살아남), EMA 0.999(0.99보다 나쁨).
+
+**측정과 선택**
+- **학습은 완전히 결정적이다.** 같은 config·seed면 152개 텐서가 비트 단위로 일치한다.
+  따라서 같은 seed로 짝지은 단일 변수 비교가 올바른 설계다.
+- **seed 간 편차는 크다** (같은 설정에서 final 0.908~0.985). 3~5회에 1번꼴로 retain
+  표현이 붕괴하는 실패 모드가 있다. 재료 게이트: `CKA_f < 0.03` **그리고** `CKA_r > 0.96`.
+- **로컬 점수는 private를 거의 예측하지 못한다.** 제출 11건에서 로컬 final과 private의
+  상관은 +0.375(n=11, 유의하지 않음)였고, 로컬 최고가 private 3위인 일이 반복됐다.
+  이전율은 대략 10~20% 수준이다.
+- **forget 삭제는 일반화되지만 retain 보존은 그렇지 않다.** 학습에 쓴 이미지와 처음 보는
+  이미지 사이에서 CKA_f는 +0.0003, CKA_r은 −0.004~−0.0066 차이가 난다.
+- **곡선의 정체**: forget 활성의 90~94%가 retain 부분공간 안에 있다(층별 SVD로 측정).
+  두 목적이 같은 공간을 공유하므로 손실 설계로는 우회할 수 없다. 이 측정 덕분에
+  GPM(직교 투영)을 3시간 들이기 전에 기각할 수 있었다.
+
+**앙상블**
+- **서로 다른 지점의 모델을 섞는 것이 단일 최고 모델보다 항상 낫다.** 최고 조합은
+  forget 극단(r019) + 중간(relf) + retain 극단(s06) + 궤적 평균(S03)이었다.
+- 개별 성능이 좋아도 `CKA_f`가 높은 재료를 넣으면 soup 전체가 무너진다.
+- 가중치 최적화는 균등 평균 대비 이득이 없다(+0.00004, A/B에서 순위 뒤집힘).

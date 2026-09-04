@@ -1,0 +1,8 @@
+# psoup_ab — 가중 soup. |A-B| 기준(홀드아웃 절반 간 점수차가 큰 후보가 private에서
+# 좋았다는 n=8 관측, 상관 +0.729)으로 고른 조합. final 최고 후보는 아님.
+weights:
+  r031: 0.50        # configs/r031.yaml  (r017 설정, seed 2)
+  s06_seed0: 0.25   # configs/s06_seed0.yaml
+  rel_seed0: 0.13   # configs/rel_seed0.yaml
+  r035: 0.12        # configs/r035.yaml  (r017 설정, seed 4)
+build: 위 가중치로 각 체크포인트의 state_dict를 가중평균 (tools/soup_search.py 참고)

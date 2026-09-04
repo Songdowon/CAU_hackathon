@@ -1,4 +1,4 @@
-# s06e_seed0 — S06 floor + S09 norm동결 + EMA 0.999 (seed 0) — 최종 재료
+# s06e_seed0 — s06(saturation-aware) + EMA 0.99 (궤적 평균) seed 0 — S03에서 +0.004 낸 축과 결합
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -25,6 +25,6 @@ train:
   lambda_cka_f: 2.0
   cka_floor: 0.05
   freeze_norm: true
-  ema_decay: 0.999
+  ema_decay: 0.99
 output:
   save_path: models/s06e_seed0.pt

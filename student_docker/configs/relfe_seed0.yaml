@@ -1,5 +1,5 @@
-# s06e_seed4 — s06(saturation-aware) + EMA 0.99 (궤적 평균) seed 4 — S03에서 +0.004 낸 축과 결합
-seed: 4
+# relfe_seed0 — relf + EMA 0.99 — 두 성공 축 결합 (seed 0)
+seed: 0
 model:
   arch: vit_base_patch16_224.mae
   num_classes: 100
@@ -10,7 +10,7 @@ data:
   batch_size: 128
   workers: 8
 train:
-  steps: 4800
+  steps: 7200
   lr: 3.0e-05
   optimizer: AdamW
   weight_decay: 0.0
@@ -22,9 +22,10 @@ train:
   lambda_ce_r: 0.0
   lambda_remap_f: 1.0
   lambda_ce_f: 0.5
-  lambda_cka_f: 2.0
+  lambda_cka_f: 3.0
+  lambda_cka_r: 2.0
   cka_floor: 0.05
   freeze_norm: true
   ema_decay: 0.99
 output:
-  save_path: models/s06e_seed4.pt
+  save_path: models/relfe_seed0.pt
