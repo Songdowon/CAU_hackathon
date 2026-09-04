@@ -186,3 +186,57 @@ EMA 초기값은 step 2400의 학습된 가중치이며 M_o를 평균에 별도�
 - 다음 독립 실험 ID: S05.
 
 실행 접수: 2026-09-05 01:23 KST, PID 264374. 확인 시 상태: smoke_or_waiting_for_gpu. 실제 GPU smoke와 학습/평가 완료 여부는 logs/S04.state.json 및 각 run report를 확인한다.
+
+## S05 — Weighted Soup Search (2026-09-05)
+
+사용자가 S05를 weighted soup 탐색으로 지정했다. 이전에 제안된 CKA 분산 축소는 S05로 실행하지 않는다. 새 학습 없이 r016, r015, r012의 가중치만 convex combination으로 섞는다.
+
+- 가중치 순서: **r016 / r015 / r012**, 각 계수 >= 0, 합 = 1.
+- 최종 목적: **원본 score_model.py AUS >= 0.995를 만족하는 확인 완료 후보 중 RUS_o 최대화**. 같은 RUS_o이면 Final로 동점을 정리한다. 전체 simplex의 전역 최적해를 보장하는 검색은 아니다.
+- 기존 확인된 soup 보고서는 r017+r016+r015+r012 (Final 0.9884468063), S03+r016+r015+r012 (Final 0.9886242889)의 네 모델 조합이다. 요청한 세 모델의 균등 평균은 이번 S05에서 새로 평가한다. 네 모델 결과는 별도 역사적 비교로만 표시한다.
+
+| 초기 후보 | r016 | r015 | r012 |
+|---|---:|---:|---:|
+| C000 (균등 기준) | 1/3 | 1/3 | 1/3 |
+| C001 | 0.50 | 0.30 | 0.20 |
+| C002 | 0.50 | 0.20 | 0.30 |
+| C003 | 0.40 | 0.40 | 0.20 |
+| C004 | 0.40 | 0.20 | 0.40 |
+| C005 | 0.60 | 0.20 | 0.20 |
+| C006 (r016 단독) | 1 | 0 | 0 |
+| C007 (r015 단독) | 0 | 1 | 0 |
+| C008 (r012 단독) | 0 | 0 | 1 |
+
+그다음 빠른 평가의 상위 2점에서 계수 0.05를 한 모델에서 다른 모델로 옮기는 6방향을 탐색하고, 갱신된 최고점에서 0.025로 6방향을 탐색한다. 중복/음수 계수는 제거하며 최대 27개다. 모든 fast 평가는 전체 public validation을 사용한다.
+
+빠른 채점의 fp16 픽셀 캐시와 원본 이미지 디코딩 결과는 다를 수 있다. 탐색 단계는 AUS >= 0.994의 여유 범위에서 RUS_o 순위를 사용한다. 아무도 이 범위에 들지 않으면 AUS 순위로 다음 탐색 중심을 고른다. 0.001 여유는 휴리스틱이며 채점 오차의 보장된 상한이 아니다.
+
+원본 채점 대상은 fast AUS >= 0.995 상위 3개, 여유 범위 상위 3개, AUS 최고, 균등 기준의 합집합(최대 8개)이다. 최종 선택에서는 여유를 적용하지 않고 원본 AUS >= 0.995를 정확히 검사한다. 조건을 만족하는 확인 완료 후보가 없으면 no feasible candidate로 끝내고 models/S05.pt를 생성하지 않는다. 만족하면 선택된 후보 파일을 그대로 복사하고 SHA-256 일치를 검사한다.
+
+- 구현: S05.py, tools/S05_run.py, configs/S05.yaml.
+- 검증: tests/test_s05.py + tests/test_s05_runner.py의 11개 테스트 통과. 계수/형태/dtype/finite 검사, 입력 불변, refinement 중복 방지, 제약 우선 선택, 원본 채점 후 후보 변경, 조건 미달 시 미선택, parent의 torch 미로드를 확인했다.
+- 실제 checkpoint CPU 검증: 152개 텐서 strict ViT load, 세 endpoint 모두 원본과 모든 텐서 일치, 공통 76개 텐서 정확 보존, 저장/재로드 일치, 입력 checkpoint SHA-256 보존. logs/S05.cpu-validation.json, logs/S05.verification.txt.
+- 모든 평균은 CPU float64 누적 후 원래 dtype으로 저장한다. 일치하는 텐서는 그대로 복제하고 비실수/정수 버퍼는 세 원본의 값이 같아야 한다.
+- 실행: python tools/S05_run.py --config configs/S05.yaml. 기존 tools.run_exp.LOCK 및 wait_for_gpu를 사용하고, 후보/원본 평가는 각각 별도 자식 프로세스로 실행해 GPU를 반환한다.
+- 상태: logs/S05.state.json, logs/S05.runner.log. 개별 평가 로그: logs/S05/.
+- 출처: results/S05.manifest.json (원본 체크포인트/소스/참조 데이터 해시 및 픽셀 캐시 fingerprint).
+- 후보: models/S05/S05-Cxxx.pt, results/S05/S05-Cxxx.fast.json. 최종 조건 충족 시 models/S05.pt.
+- 비교표/전체 점수: results/S05.comparison.md 및 results/S05.comparison.json. 모든 값은 local public validation이며 private 개선은 미검증이다.
+- 다음 독립 실험 ID: S06.
+
+S05 실행 등록: 2026-09-04T17:18:43.594944+00:00 (UTC), PID 305434. 접수 확인 상태: fast_or_waiting_for_gpu. 실시간 상태는 logs/S05.state.json.
+
+### S03 실행 완료
+
+평가 완료: results/S03.comparison.md. 같은 학습의 last 대비 차이를 모든 후보에 기록했다. private 개선 여부는 미검증이다.
+
+## S06 - CKA Target-Floor (2026-09-05)
+
+- Baseline: r017, with the same seed, optimizer, 4,800 steps, trainable last 6 blocks, and all retain/forget loss weights.
+- Single experimental change: `train.cka_floor: 0.02`.
+- Effective forget CKA loss: `max(0, minibatch_CKA_f - 0.02)`.
+- Goal: stop the saturated CKA_f term from consuming retain representation after it reaches the target region.
+- Interpretation limit: the gate uses the 128-sample training minibatch statistic; it is not identical to the 1,500-sample validation CKA_f.
+- Artifacts: `S06.py`, `configs/S06.yaml`, `tests/test_s06.py`.
+- Verification: 6 focused tests passed before launch.
+- Status: queued through `tools/run_exp.py` under the shared GPU lock.

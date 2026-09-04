@@ -1,0 +1,13 @@
+{
+  "experiment": "S05",
+  "pid": 305434,
+  "launched_at": "2026-09-04T17:18:43.594944+00:00",
+  "command": [
+    "/opt/venv/bin/python3",
+    "-u",
+    "tools/S05_run.py",
+    "--config",
+    "configs/S05.yaml"
+  ],
+  "workspace": "/root/cau-ai-hackathon-26/student_docker"
+}

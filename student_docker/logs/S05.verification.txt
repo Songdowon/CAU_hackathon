@@ -1,0 +1,78 @@
+tests
+test_analytic_average_endpoint_and_inputs_unchanged (test_s05.SoupTests.test_analytic_average_endpoint_and_inputs_unchanged) ... ok
+test_checkpoint_write_preserves_existing_artifact (test_s05.SoupTests.test_checkpoint_write_preserves_existing_artifact) ... ok
+test_exact_final_constraint_and_rus_priority (test_s05.SoupTests.test_exact_final_constraint_and_rus_priority) ... ok
+test_identical_frozen_tensors_remain_exact (test_s05.SoupTests.test_identical_frozen_tensors_remain_exact) ... ok
+test_nonfinite_metrics_rejected (test_s05.SoupTests.test_nonfinite_metrics_rejected) ... ok
+test_refinement_preserves_simplex_and_deduplicates (test_s05.SoupTests.test_refinement_preserves_simplex_and_deduplicates) ... ok
+test_screening_allows_precision_margin_but_full_selection_does_not (test_s05.SoupTests.test_screening_allows_precision_margin_but_full_selection_does_not) ... ok
+test_state_mismatches_and_nonfinite_are_rejected (test_s05.SoupTests.test_state_mismatches_and_nonfinite_are_rejected) ... ok
+test_weight_constraints (test_s05.SoupTests.test_weight_constraints) ... ok
+test_confirmed_constraint_and_export (test_s05_runner.SuiteTests.test_confirmed_constraint_and_export) ... ok
+test_no_feasible_candidate_does_not_export (test_s05_runner.SuiteTests.test_no_feasible_candidate_does_not_export) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.177s
+
+OK
+
+runner_cli
+usage: S05_run.py [-h] [--config CONFIG]
+
+Bounded S05 weighted-soup search. No training and no CUDA in the parent.
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG
+
+candidate_cli
+usage: S05.py [-h] [--config CONFIG] --candidate CANDIDATE --weights WEIGHTS
+              WEIGHTS WEIGHTS --manifest MANIFEST
+
+S05 Weighted Soup Search helpers and isolated CUDA candidate evaluation. Run
+the suite with python tools/S05_run.py --config configs/S05.yaml. Importing
+this module does not import torch or initialize CUDA.
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG
+  --candidate CANDIDATE
+  --weights WEIGHTS WEIGHTS WEIGHTS
+  --manifest MANIFEST
+
+parent_no_torch
+PARENT_IMPORT_DOES_NOT_LOAD_TORCH
+
+
+{
+  "status": "passed",
+  "source_order": [
+    "r016",
+    "r015",
+    "r012"
+  ],
+  "source_sha256": {
+    "models/r016.pt": "57a4a456f878e050c7159fa93dc1fd9547ff927cff2221d5fe6bcc7cdcd28c6c",
+    "models/r015.pt": "8c7441229180123640087ff50aab82a44c5cbe7ca1778e9400e483175217f704",
+    "models/r012.pt": "8df00325d77735ebe63ac374ff4f47cbbabeeaf76ec2476f4aa51d0a63baeeec"
+  },
+  "endpoints": [
+    {
+      "name": "r016",
+      "all_tensors_exact": true
+    },
+    {
+      "name": "r015",
+      "all_tensors_exact": true
+    },
+    {
+      "name": "r012",
+      "all_tensors_exact": true
+    }
+  ],
+  "tensor_count": 152,
+  "common_tensors_preserved_exactly": 76,
+  "strict_vit_load": true,
+  "checkpoint_roundtrip_exact": true,
+  "cuda_initialized": false
+}

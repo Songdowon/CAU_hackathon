@@ -1,0 +1,63 @@
+# S05 - Weighted Soup Search; maximize RUS_o with full AUS >= 0.995
+experiment: S05
+script: S05.py
+sources:
+- name: r016
+  path: models/r016.pt
+- name: r015
+  path: models/r015.pt
+- name: r012
+  path: models/r012.pt
+search:
+  min_aus: 0.995
+  fast_margin: 0.001
+  batch_size: 256
+  max_candidates: 27
+  initial_weights:
+  - - 0.3333333333333333
+    - 0.3333333333333333
+    - 0.3333333333333333
+  - - 0.5
+    - 0.3
+    - 0.2
+  - - 0.5
+    - 0.2
+    - 0.3
+  - - 0.4
+    - 0.4
+    - 0.2
+  - - 0.4
+    - 0.2
+    - 0.4
+  - - 0.6
+    - 0.2
+    - 0.2
+  - - 1
+    - 0
+    - 0
+  - - 0
+    - 1
+    - 0
+  - - 0
+    - 0
+    - 1
+  refinement:
+  - step: 0.05
+    centers: 2
+  - step: 0.025
+    centers: 1
+  full_top_k: 3
+output:
+  model_dir: models/S05
+  result_dir: results/S05
+  log_dir: logs/S05
+  state: logs/S05.state.json
+  manifest: results/S05.manifest.json
+  comparison: results/S05.comparison.json
+  comparison_md: results/S05.comparison.md
+  winner: models/S05.pt
+historical_reports:
+- checkpoint: models/soup_r017_r016_r015_r012.pt
+  report: results/soup_r017_r016_r015_r012-validation-20260904T161525Z.json
+- checkpoint: models/soup_S03_r016_r015_r012.pt
+  report: results/soup_S03_r016_r015_r012-validation-20260904T163253Z.json

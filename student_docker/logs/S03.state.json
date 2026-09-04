@@ -1,9 +1,14 @@
 {
   "experiment": "S03",
   "pid": 234291,
-  "status": "fast_evaluation",
+  "status": "completed",
   "config": "configs/S03.yaml",
-  "completed_evaluations": [],
-  "updated_at": "2026-09-04T16:28:39.073157+00:00",
-  "current": "ema099"
+  "completed_evaluations": [
+    "avg",
+    "last",
+    "ema099",
+    "ema0999"
+  ],
+  "updated_at": "2026-09-04T17:25:26.110654+00:00",
+  "current": null
 }

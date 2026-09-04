@@ -1,0 +1,19 @@
+{
+  "experiment": "S05",
+  "pid": 305434,
+  "status": "failed",
+  "completed_fast": 1,
+  "completed_full": 0,
+  "updated_at": "2026-09-04T17:24:03.075826+00:00",
+  "current": "C001",
+  "stage": "initial",
+  "weights": [
+    0.5,
+    0.3,
+    0.2
+  ],
+  "AUS": 0.9958410237480004,
+  "RUS_o": 0.9761776976803415,
+  "final": 0.9859113275697993,
+  "error": "RuntimeError: S05 source changed after launch: tools/run_exp.py"
+}

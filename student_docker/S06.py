@@ -24,6 +24,7 @@ CKA는 isotropic scaling과 orthogonal 변환에 불변이므로, forget feature
     python score_model.py models/R01.pt         # 실제 grader (제출 전 필수)
 """
 import argparse
+import math
 import copy
 import os
 import random
@@ -91,6 +92,18 @@ def batch_linear_cka(x, y):
     denom = torch.linalg.norm(x.T @ x) * torch.linalg.norm(y.T @ y)
     return ((x.T @ y) ** 2).sum() / (denom + 1e-12)
 
+
+def cka_target_floor(value, floor):
+    """Stop CKA_f pressure once minibatch CKA reaches the configured floor."""
+    try:
+        floor = float(floor)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("cka_floor must be a finite number in [0, 1]") from exc
+    if not math.isfinite(floor) or not 0.0 <= floor <= 1.0:
+        raise ValueError("cka_floor must be a finite number in [0, 1]")
+    if not torch.isfinite(value.detach()).all():
+        raise ValueError("CKA value must be finite")
+    return torch.relu(value - floor)
 
 def forward(model, x):
     """grader와 동일한 경로: pre-logits feature와 logit을 함께 얻는다."""
@@ -200,10 +213,8 @@ def main():
             # 낮아지면(floor 이하) 더 밀지 않는다. 채점상 CKA_f를 0.02에서 0으로
             # 만들어봐야 final +0.006인 반면 CKA_r 개선은 +0.015 가치가 있다.
             if w["cka_f"]:
-                l_cka_f = batch_linear_cka(z_f_u, z_f_o)
                 floor = float(t.get("cka_floor", 0) or 0)
-                if floor:
-                    l_cka_f = torch.relu(l_cka_f - floor)
+                l_cka_f = cka_target_floor(batch_linear_cka(z_f_u, z_f_o), floor)
             else:
                 l_cka_f = z_f_u.sum() * 0
 

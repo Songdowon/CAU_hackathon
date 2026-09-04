@@ -1,0 +1,32 @@
+{
+  "status": "passed",
+  "source_order": [
+    "r016",
+    "r015",
+    "r012"
+  ],
+  "source_sha256": {
+    "models/r016.pt": "57a4a456f878e050c7159fa93dc1fd9547ff927cff2221d5fe6bcc7cdcd28c6c",
+    "models/r015.pt": "8c7441229180123640087ff50aab82a44c5cbe7ca1778e9400e483175217f704",
+    "models/r012.pt": "8df00325d77735ebe63ac374ff4f47cbbabeeaf76ec2476f4aa51d0a63baeeec"
+  },
+  "endpoints": [
+    {
+      "name": "r016",
+      "all_tensors_exact": true
+    },
+    {
+      "name": "r015",
+      "all_tensors_exact": true
+    },
+    {
+      "name": "r012",
+      "all_tensors_exact": true
+    }
+  ],
+  "tensor_count": 152,
+  "common_tensors_preserved_exactly": 76,
+  "strict_vit_load": true,
+  "checkpoint_roundtrip_exact": true,
+  "cuda_initialized": false
+}

@@ -1,12 +1,13 @@
 {
   "experiment": "S04",
   "pid": 264374,
-  "status": "training_or_waiting_for_gpu",
+  "status": "failed",
   "order": [
     "S04-control",
     "S04"
   ],
   "completed_evaluations": [],
-  "updated_at": "2026-09-04T16:28:50.380607+00:00",
-  "current": "S04-control"
+  "updated_at": "2026-09-04T17:23:14.273031+00:00",
+  "current": "S04-control",
+  "error": "RuntimeError: Source changed after S04 launch: tools/run_exp.py"
 }
