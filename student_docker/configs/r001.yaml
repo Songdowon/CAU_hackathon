@@ -1,0 +1,36 @@
+# r001 — forget→retain feature 재매핑 + retain KD (기준 실험)
+# unlearn_remap.py 실험 config. 하이퍼파라미터는 전부 여기서만 관리한다.
+seed: 0
+
+model:
+  arch: vit_base_patch16_224.mae   # 고정 (변경 금지)
+  num_classes: 100                 # 고정 (변경 금지)
+  mo_ckpt: m_o/M_o.pt
+
+data:
+  split: splits/student_split.pt
+  forget: es/es_imagenet_mo/forget10.json
+  batch_size: 128                  # retain/forget 공통 배치 크기
+  workers: 8
+
+train:
+  steps: 400
+  lr: 1.0e-5
+  optimizer: AdamW
+  weight_decay: 0.0
+  trainable_blocks: 6              # 뒤쪽 N개 블록 + norm + head만 학습 (-1 = 전체)
+  kd_temperature: 2.0
+  clip_grad: 1.0
+
+  # retain 보존 (CKA_r_o, Acc_r)
+  lambda_feat_r: 1.0               # teacher pre-logits와의 코사인
+  lambda_kd_r: 1.0                 # logit KD
+  lambda_ce_r: 0.0                 # 정답 CE (보통 0, KD로 충분)
+
+  # forget 제거 (CKA_f_o, Acc_f)
+  lambda_remap_f: 1.0              # 무작위 retain 파트너의 teacher feature로 끌어당김
+  lambda_ce_f: 0.5                 # 그 파트너의 label로 CE
+  lambda_cka_f: 0.0                # 미니배치 CKA 직접 최소화 (0이면 미사용)
+
+output:
+  save_path: models/r001.pt

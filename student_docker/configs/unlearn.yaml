@@ -17,10 +17,11 @@ data:
 # 아래 train 항목들은 자유롭게 바꾸며 실험하세요.
 # (본인 방법에 필요한 항목을 추가해도 됩니다)
 train:
-  epochs: 2
-  lr: 1.0e-5
+  epochs: 1
+  lr: 1.0e-6
   optimizer: AdamW
-  weight_decay: 0.0
+  weight_decay: 0.05
+  forget_weight: 0.1
 
 output:
-  save_path: models/experiment-001.pt  # 실험마다 고유한 이름 사용
+  save_path: models/S01_retain_ce_neggrad.pt  # 실험마다 고유한 이름 사용

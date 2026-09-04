@@ -1,0 +1,84 @@
+"""실험 러너: GPU 직렬화 → 학습 → fasteval → EXPERIMENTS.md 기록.
+
+GPU 1장을 둘이 공유하므로 flock으로 한 번에 하나만 돌게 강제한다.
+큐에 넣으면 앞 실험이 끝날 때까지 알아서 기다린다.
+
+    python tools/run_exp.py configs/r002.yaml
+    python tools/run_exp.py configs/r00*.yaml        # 순차 실행
+"""
+import argparse
+import fcntl
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+import yaml
+
+WS = Path(os.environ.get("STUDENT_WORKSPACE_ROOT", "."))
+LOCK = Path("/tmp/hackathon_gpu.lock")
+LOG = WS / "EXPERIMENTS.md"
+HEADER = (
+    "| 실험 | 설명 | Acc_f | Acc_r | CKA_f | CKA_r | AUS | RUS_o | **final** | 학습(s) | 시각 |\n"
+    "|---|---|---|---|---|---|---|---|---|---|---|\n"
+)
+
+
+def headline(cfg_path):
+    """config 첫 줄 주석 = 그 실험이 무엇인지."""
+    first = Path(cfg_path).read_text().splitlines()[0].strip()
+    return first.lstrip("#").strip() if first.startswith("#") else ""
+
+
+def run(cfg_path):
+    cfg = yaml.safe_load(open(cfg_path))
+    ckpt = cfg["output"]["save_path"]
+    name = Path(cfg_path).stem
+    script = cfg.get("script", "unlearn_remap.py")
+
+    with open(LOCK, "w") as lock:
+        print(f"[{name}] GPU 대기 중...", flush=True)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        print(f"[{name}] 학습 시작", flush=True)
+        t0 = time.time()
+        train = subprocess.run([sys.executable, script, "--config", str(cfg_path)],
+                               capture_output=True, text=True)
+        secs = round(time.time() - t0)
+        if train.returncode != 0:
+            print(train.stdout[-2000:], train.stderr[-2000:])
+            raise SystemExit(f"[{name}] 학습 실패")
+        print(train.stdout.strip().splitlines()[-1] if train.stdout.strip() else "", flush=True)
+
+        sys.path.insert(0, str(WS / "tools"))
+        import torch
+        import fasteval
+        device = torch.device("cuda")
+        r = fasteval.score(fasteval.load_ckpt(ckpt, device), device)
+
+    if not LOG.exists():
+        LOG.write_text("# 실험 기록\n\n"
+                       "`r###` = 이 라인의 실험, `s###` = 팀원 라인. "
+                       "각 config 첫 줄 주석에 그 실험이 무엇인지 적는다.\n\n" + HEADER)
+    with LOG.open("a") as f:
+        f.write(f"| {name} | {headline(cfg_path)} | {r['Acc_f']:.2f} | {r['Acc_r']:.2f} | "
+                f"{r['CKA_f_o']:.4f} | {r['CKA_r_o']:.4f} | {r['AUS']:.4f} | {r['RUS_o']:.4f} | "
+                f"**{r['final']:.4f}** | {secs} | {datetime.now():%m-%d %H:%M} |\n")
+
+    print(f"[{name}] Acc_f {r['Acc_f']:.2f}  Acc_r {r['Acc_r']:.2f}  "
+          f"CKA_f {r['CKA_f_o']:.4f}  CKA_r {r['CKA_r_o']:.4f}  "
+          f"AUS {r['AUS']:.4f}  RUS_o {r['RUS_o']:.4f}  final {r['final']:.4f}", flush=True)
+    return r
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("configs", nargs="+")
+    a = p.parse_args()
+    for c in a.configs:
+        run(c)
+
+
+if __name__ == "__main__":
+    main()
