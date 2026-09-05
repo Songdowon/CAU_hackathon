@@ -1,0 +1,32 @@
+# [슬롯재사용] l2sp010 — relfe + L2-SP α=0.1 — 가중치를 M_o 근처에 묶어 retain 일반화 갭(로컬→private 압축)을 줄인다
+seed: 0
+model:
+  arch: vit_base_patch16_224.mae
+  num_classes: 100
+  mo_ckpt: m_o/M_o.pt
+data:
+  split: splits/student_split.pt
+  forget: es/es_imagenet_mo/forget10.json
+  batch_size: 128
+  workers: 8
+train:
+  steps: 7200
+  lr: 3.0e-05
+  optimizer: AdamW
+  weight_decay: 0.0
+  trainable_blocks: 6
+  kd_temperature: 2.0
+  clip_grad: 1.0
+  lambda_feat_r: 2.0
+  lambda_kd_r: 2.0
+  lambda_ce_r: 0.0
+  lambda_remap_f: 1.0
+  lambda_ce_f: 0.5
+  lambda_cka_f: 3.0
+  lambda_cka_r: 2.0
+  cka_floor: 0.05
+  freeze_norm: true
+  ema_decay: 0.99
+  lambda_l2sp: 0.1
+output:
+  save_path: models/l2sp010.pt

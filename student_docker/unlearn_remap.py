@@ -176,6 +176,15 @@ def main():
     opt = getattr(torch.optim, t.get("optimizer", "AdamW"))(
         params, lr=float(t["lr"]), weight_decay=float(t.get("weight_decay", 0.0)))
 
+    # L2-SP: 가중치를 M_o 쪽으로 당기는 decoupled 정규화.
+    # retain 보존이 학습에서 본 이미지에만 맞춰지는 것이 로컬 점수가 private로
+    # 이전되지 않는 원인이다(CKA_r 일반화 갭 -0.004~-0.0066). M_o는 모든 이미지에서
+    # retain의 정답이므로, 가중치가 M_o 근처에 묶여 있을수록 못 본 이미지에서도
+    # retain이 유지된다. 사후 보간과 달리 옵티마이저가 "M_o에 가까우면서 CKA_f도
+    # 낮은" 해를 직접 찾는다.
+    l2sp = float(t.get("lambda_l2sp", 0) or 0)
+    anchor = [q.detach().clone() for q in params] if l2sp else None
+
     retain_it, forget_it = cycle(loaders["retain"]), cycle(loaders["forget"])
     steps = int(t["steps"])
     temp = float(t.get("kd_temperature", 2.0))
@@ -269,6 +278,12 @@ def main():
             loss.backward()
         if t.get("clip_grad"):
             torch.nn.utils.clip_grad_norm_(params, float(t["clip_grad"]))
+        if anchor is not None:
+            # clip 뒤에 더한다 — 정규화까지 잘려나가면 세기를 조절할 수 없다.
+            with torch.no_grad():
+                for q, a in zip(params, anchor):
+                    if q.grad is not None:
+                        q.grad.add_(q.detach() - a, alpha=l2sp)
         opt.step()
 
         if ema is not None:

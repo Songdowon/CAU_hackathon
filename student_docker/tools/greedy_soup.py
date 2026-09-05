@@ -13,7 +13,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fasteval
 
-paths = sys.argv[1:]
+paths = [a for a in sys.argv[1:] if a.endswith(".pt")]
 device = torch.device("cuda")
 model = fasteval.load_ckpt(paths[0], device)
 refs = torch.load(fasteval.DS / "validation_cache/refs.pt", map_location="cpu", weights_only=True)
@@ -30,9 +30,20 @@ dtypes = {k: v.dtype for k, v in torch.load(paths[0], map_location="cpu",
                                             weights_only=True).get("model", {}).items()}
 
 
+# 전체 validation의 final로 고르면 greedy 선택 자체가 그 표본에 과적합한다
+# (측정: 재료 단품 |A-B| 0.0009~0.0029 → 소프 0.0040). ROBUST=1이면 절반씩
+# 나눈 A/B 중 나쁜 쪽을 목적함수로 써서 표본에 안 휘는 조합을 고른다.
+ROBUST = "--robust" in sys.argv
+ia, ib = (fasteval.half_index("a"), fasteval.half_index("b")) if ROBUST else (None, None)
+
+
 def evaluate(members):
     sd = {k: sum(states[p][k] for p in members).div_(len(members)).to(dtypes[k]) for k in keys}
     model.load_state_dict(sd, strict=True)
+    if ROBUST:
+        a = fasteval.score(model, device, refs=refs, mo_pre=mo_pre, index=ia)["final"]
+        b = fasteval.score(model, device, refs=refs, mo_pre=mo_pre, index=ib)["final"]
+        return min(a, b), sd
     return fasteval.score(model, device, refs=refs, mo_pre=mo_pre)["final"], sd
 
 
@@ -65,6 +76,6 @@ while True:
     print(f"  + {Path(pick).stem:<26}→ {best:.5f}  (재료 {len(chosen)}개)")
 
 _, sd = evaluate(chosen)
-out = "models/greedy_soup.pt"
+out = "models/greedy_soup_robust.pt" if ROBUST else "models/greedy_soup.pt"
 torch.save({"model": sd}, out)
 print(f"\n최종 {best:.5f}: {', '.join(Path(p).stem for p in chosen)}\n저장: {out}")
