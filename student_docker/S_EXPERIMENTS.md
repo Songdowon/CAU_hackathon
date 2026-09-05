@@ -308,3 +308,15 @@ S05 실행 등록: 2026-09-04T17:18:43.594944+00:00 (UTC), PID 305434. 접수 �
 - Artifacts: S13.py, configs/S13.yaml, models/S13.pt, results/S13.merge-audit.json, tests/test_s13.py.
 - CPU verification: 152 tensors; 2 head tensors exactly preserved; 78 tensors exactly restored to M_o; 72 consensus tensors; all values finite and on CPU; saved delta-norm maximum relative error 5.23e-6; exact reload and SHA-256 check passed.
 - Status: checkpoint generated. No GPU evaluation was run, and S13 was not registered in the shared GPU queue. Local/private score is unverified; require CKA_f_o <= 0.03 before submission.
+
+## S14 - Private-robust weighted soup
+
+- Goal: combine the two checkpoints with the strongest observed private stability without GPU use.
+- Inputs: models/d25_hf.pt (0.60) + models/mall_hf.pt (0.40).
+- Merge: weighted average of 150 floating backbone tensors; copy backbone.head.weight and backbone.head.bias exactly from d25_hf.
+- Output: models/S14.pt and submission_ready/S14/model.pt.
+- Audit: results/S14.soup-audit.json.
+- Verification: 152 tensors, save/reload exact match, all floating tensors finite, CPU only.
+- SHA256: 60e8fae463dad8a3b35c8a2728d7cbaf6d016529185852e33275f75b6286df5.
+- Queue registration: none. GPU use: none.
+- Evaluation: pending; no leaderboard submission decision made.

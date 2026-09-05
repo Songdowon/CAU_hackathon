@@ -1,0 +1,19 @@
+name: S14
+method: private_robust_weighted_soup
+inputs:
+  - path: models/d25_hf.pt
+    weight: 0.60
+    local: 0.99721
+    private: 0.99639
+  - path: models/mall_hf.pt
+    weight: 0.40
+    local: 0.99723
+    private: 0.99634
+head_source_index: 0
+head_prefixes:
+  - "head."
+  - "backbone.head."
+output: models/S14.pt
+audit: results/S14.soup-audit.json
+queue_registered: false
+gpu: false

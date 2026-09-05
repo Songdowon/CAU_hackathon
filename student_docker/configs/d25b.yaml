@@ -1,0 +1,36 @@
+# d25b — d25와 동일한 궤적·간격(100)·개수(25)에서 구간만 2000~4400으로
+# 200스텝 앞으로 민 것. 임계값 0개, 고르지 않고 구간 전체를 균등 평균.
+# 따라서 평균은 한 궤적 안에서만 하고, 표본만 13 -> 36으로 늘린다.
+seed: 0
+model:
+  arch: vit_base_patch16_224.mae
+  num_classes: 100
+  mo_ckpt: m_o/M_o.pt
+data:
+  split: splits/student_split.pt
+  forget: es/es_imagenet_mo/forget10.json
+  batch_size: 128
+  workers: 8
+train:
+  steps: 4600
+  lr: 3.0e-05
+  optimizer: AdamW
+  weight_decay: 0.0
+  trainable_blocks: 6
+  kd_temperature: 2.0
+  clip_grad: 1.0
+  lambda_feat_r: 2.0
+  lambda_kd_r: 2.0
+  lambda_ce_r: 0.0
+  lambda_remap_f: 1.0
+  lambda_ce_f: 0.0
+  lambda_cka_f: 3.0
+  lambda_cka_r: 8.0
+  cka_floor: 0.05
+  freeze_norm: true
+  ema_decay: 0.99
+  lambda_l2sp: 0.0
+  ckpt_from: 1000
+  ckpt_every: 100
+output:
+  save_path: models/ckar8d.pt

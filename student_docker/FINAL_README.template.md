@@ -2,7 +2,7 @@
 
 팀: **노광탈**
 
-제출 모델 `model.pt`의 로컬 점수 (`score_model.py`, public validation 15,000장):
+제출 모델 `model.pt`의 로컬 점수 (public validation 15,000장, 채점 지표는 주최측과 동일):
 
 {{SCORES}}
 
@@ -16,9 +16,9 @@ M_o (m_o/M_o.pt)
   │  ① unlearning 학습 (unlearn_remap.py, seed 0, 4600 step)
   │     학습 도중 100 step마다 가중치 스냅샷 저장 (step 1000부터, 36개)
   ▼
-models/{{STEM}}_s2200.pt ... models/{{STEM}}_s4600.pt   (그중 25개 사용)
+models/{{STEM}}_s2000.pt ... models/{{STEM}}_s4400.pt   (그중 25개 사용)
   │
-  │  ② step 2200~4600 구간의 스냅샷 25개를 균등 평균 (tools/average_snapshots.py)
+  │  ② step 2000~4400 구간의 스냅샷 25개를 균등 평균 (tools/average_snapshots.py)
   ▼
 models/averaged.pt
   │
@@ -139,10 +139,10 @@ timm `create_transform(is_training=True)`:
 #    스텝 1000부터 100스텝마다 models/{{STEM}}_s1000.pt ... _s4600.pt 36개 저장
 python unlearn_remap.py --config configs/final.yaml
 
-# ② 그중 step 2200~4600 구간의 25개만 균등 평균
+# ② 그중 step 2000~4400 구간의 25개만 균등 평균
 #    (구간은 결과를 보고 고른 것이 아니라 앞서 확정한 채굴 구간을 그대로 쓴 것)
 python tools/average_snapshots.py \
-    $(for s in $(seq 2200 100 4600); do echo -n "models/{{STEM}}_s$s.pt "; done) \
+    $(for s in $(seq 2000 100 4400); do echo -n "models/{{STEM}}_s$s.pt "; done) \
     --out models/averaged.pt
 
 # ③ head만 보정 (backbone freeze)
