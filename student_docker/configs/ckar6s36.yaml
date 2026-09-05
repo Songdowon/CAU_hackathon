@@ -1,0 +1,38 @@
+# ckar6s36 — 아래 config로 학습한 궤적의 **스텝 3600 스냅샷**이다.
+# (train.ckpt_every 600 / ckpt_from 3000 설정으로 models/ckar6_s3600.pt 로 저장된 것)
+# 최종 스텝(7200)이 아니라 3600 지점을 고른 이유: 같은 궤적에서 CKA_f가
+# 0.0075~0.0432로 요동치고 CKA_r은 0.9945에서 0.9931로 감소하여, 3600 지점이
+# (1-CKA_f)+CKA_r 합이 가장 컸다. 이후 tools/headfit.py로 head만 보정했다.
+seed: 0
+model:
+  arch: vit_base_patch16_224.mae
+  num_classes: 100
+  mo_ckpt: m_o/M_o.pt
+data:
+  split: splits/student_split.pt
+  forget: es/es_imagenet_mo/forget10.json
+  batch_size: 128
+  workers: 8
+train:
+  steps: 7200
+  lr: 3.0e-05
+  optimizer: AdamW
+  weight_decay: 0.0
+  trainable_blocks: 6
+  kd_temperature: 2.0
+  clip_grad: 1.0
+  lambda_feat_r: 2.0
+  lambda_kd_r: 2.0
+  lambda_ce_r: 0.0
+  lambda_remap_f: 1.0
+  lambda_ce_f: 0.0
+  lambda_cka_f: 3.0
+  lambda_cka_r: 6.0
+  cka_floor: 0.05
+  freeze_norm: true
+  ckpt_every: 600
+  ckpt_from: 3000
+  ema_decay: 0.99
+  lambda_l2sp: 0.0
+output:
+  save_path: models/ckar6.pt

@@ -1,4 +1,7 @@
-# [슬롯재사용] l2p005 — relfe + proximal L2-SP λ=5 (θ ← θ − ηλ(θ−M_o), opt.step 뒤). 예상 평형 ‖p−a‖ ≈ 18 (무제약 19.7). CKA_r 천장 0.988을 뚫는 것이 목표
+# S09-1 — r019 동일 loss/seed, 마지막 2400 updates만 cosine decay to 3e-6
+# Selection: hard CKA_f <= 0.03; primary final; secondary CKA_r/RUS;
+# stability: compare against same-seed r019.
+script: S09.py
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -22,11 +25,9 @@ train:
   lambda_ce_r: 0.0
   lambda_remap_f: 1.0
   lambda_ce_f: 0.5
-  lambda_cka_f: 3.0
-  lambda_cka_r: 2.0
-  cka_floor: 0.05
-  freeze_norm: true
-  ema_decay: 0.99
-  lambda_l2sp: 5
+  lambda_cka_f: 2.0
+  lr_schedule: cosine_tail
+  lr_tail_start: 4800
+  lr_final: 3.0e-06
 output:
-  save_path: models/l2p005.pt
+  save_path: models/S09-1.pt

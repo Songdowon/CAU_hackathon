@@ -1,4 +1,4 @@
-# [슬롯재사용] l2p005 — relfe + proximal L2-SP λ=5 (θ ← θ − ηλ(θ−M_o), opt.step 뒤). 예상 평형 ‖p−a‖ ≈ 18 (무제약 19.7). CKA_r 천장 0.988을 뚫는 것이 목표
+# ckar6 — lambda_cka_r 6.0 — 4.0(합 1.9876)과 8.0(1.9718) 사이 브래킷
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -21,12 +21,14 @@ train:
   lambda_kd_r: 2.0
   lambda_ce_r: 0.0
   lambda_remap_f: 1.0
-  lambda_ce_f: 0.5
+  lambda_ce_f: 0.0
   lambda_cka_f: 3.0
-  lambda_cka_r: 2.0
+  lambda_cka_r: 6.0
   cka_floor: 0.05
   freeze_norm: true
+  ckpt_every: 600
+  ckpt_from: 3000
   ema_decay: 0.99
-  lambda_l2sp: 5
+  lambda_l2sp: 0.0
 output:
-  save_path: models/l2p005.pt
+  save_path: models/ckar6.pt

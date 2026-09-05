@@ -1,4 +1,5 @@
-# [슬롯재사용] l2p005 — relfe + proximal L2-SP λ=5 (θ ← θ − ηλ(θ−M_o), opt.step 뒤). 예상 평형 ‖p−a‖ ≈ 18 (무제약 19.7). CKA_r 천장 0.988을 뚫는 것이 목표
+# fos11b — fos11a와 동일, lr만 1e-3 -> 1e-2. CKA_f 감속이 capacity 한계인지
+# 최적화 속도인지 판정한다 (스냅샷은 B가 state_dict 밖이라 무의미해서 끔).
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -10,8 +11,8 @@ data:
   batch_size: 128
   workers: 8
 train:
-  steps: 7200
-  lr: 3.0e-05
+  steps: 1200
+  lr: 0.01
   optimizer: AdamW
   weight_decay: 0.0
   trainable_blocks: 6
@@ -21,12 +22,15 @@ train:
   lambda_kd_r: 2.0
   lambda_ce_r: 0.0
   lambda_remap_f: 1.0
-  lambda_ce_f: 0.5
+  lambda_ce_f: 0.0
   lambda_cka_f: 3.0
   lambda_cka_r: 2.0
   cka_floor: 0.05
   freeze_norm: true
-  ema_decay: 0.99
-  lambda_l2sp: 5
+  ema_decay: 0.0
+  lambda_l2sp: 0.0
+  ckpt_from: 200
+  ckpt_every: 0
+  fos11: true
 output:
-  save_path: models/l2p005.pt
+  save_path: models/fos11b.pt

@@ -1,0 +1,39 @@
+# dual1 — ckar4에서 이어 학습. forget은 ckar4를 teacher로 '보존', retain은 M_o로 복구.
+# CKA_f 0.0046(희귀 궤적)을 지키면서 CKA_r 0.9922 -> 0.994+ 를 노린다.
+# 100스텝마다 스냅샷 -> 6개 후보. 가드레일: CKA_f > 0.01 이면 버린다.
+seed: 0
+model:
+  arch: vit_base_patch16_224.mae
+  num_classes: 100
+  mo_ckpt: m_o/M_o.pt
+  init_ckpt: models/ckar4.pt
+data:
+  split: splits/student_split.pt
+  forget: es/es_imagenet_mo/forget10.json
+  batch_size: 128
+  workers: 8
+train:
+  steps: 600
+  lr: 2.0e-06
+  optimizer: AdamW
+  weight_decay: 0.0
+  trainable_blocks: 2
+  kd_temperature: 2.0
+  clip_grad: 1.0
+  lambda_feat_r: 2.0
+  lambda_kd_r: 2.0
+  lambda_ce_r: 0.0
+  lambda_remap_f: 0.0
+  lambda_ce_f: 0.0
+  lambda_cka_f: 1.0
+  lambda_cka_r: 6.0
+  cka_floor: 0.05
+  freeze_norm: true
+  ema_decay: 0.0
+  lambda_l2sp: 0.0
+  forget_teacher_ckpt: models/ckar4.pt
+  lambda_preserve_f: 4.0
+  ckpt_every: 100
+  ckpt_from: 0
+output:
+  save_path: models/dual1.pt

@@ -251,3 +251,49 @@ S05 실행 등록: 2026-09-04T17:18:43.594944+00:00 (UTC), PID 305434. 접수 �
 - Artifacts: S08.py, configs/S08.yaml, tests/test_s08.py.
 - Verification: 6 focused S08 tests and 6 S06 regression tests passed before launch.
 - Status: ready; queue after the active rel_seed4 run.
+
+
+## S09 — Mixed-loss Cosine Tail (2026-09-05)
+
+- 목적: r019가 7200 steps 동안 고정 lr로 이동하면서 후반의 좋은 지점을 지나치는지 검증한다. retain-only recovery와 달리 마지막까지 동일한 retain+forget 혼합 loss를 유지하고 lr만 줄인다.
+- 기준: r019와 동일한 M_o, seed=0, 마지막 6 blocks+norm/head, AdamW, 7200 steps, base lr=3e-5, weight decay=0, clip=1.0, loss 가중치 전부 동일.
+- S09-1: updates 0~4800은 3e-5, 이후 cosine decay하여 마지막 update에서 3e-6.
+- S09-2: updates 0~4800은 3e-5, 이후 cosine decay하여 마지막 update에서 0.
+- hard guardrail: CKA_f_o <= 0.03을 통과한 후보만 유효.
+- primary: final_score. secondary: CKA_r_o와 RUS_o.
+- stability: 동일 seed의 r019보다 개선되는지 비교한다. seed=0 후보에서 guardrail과 r019 개선을 확인하기 전에는 추가 seed로 확장하지 않는다.
+- 코드/설정/출력: S09.py, configs/S09-1.yaml, configs/S09-2.yaml, models/S09-1.pt, models/S09-2.pt.
+- 구현: zero-based update 0~4800까지 base lr를 유지하고 4801부터 cosine tail을 적용하며 update 7199에서 지정한 final lr에 정확히 도달한다. step 로그에 실제 lr를 함께 남긴다.
+- 검증: tests/test_s09.py unittest 4개 통과, S09.py py_compile 통과. 두 config가 script/schedule/output을 제외하면 r019와 동일함을 확인했다.
+- 실행 등록: tools/run_exp.py의 기존 /tmp/hackathon_gpu.lock 큐에 S09-1 -> S09-2 순서로 등록. PID 737371, 로그 logs/S09.runner.log. 등록 확인 상태는 GPU lock 대기 중이다.
+- 완료 결과는 EXPERIMENTS.md의 완료 표와 각 validation 결과에만 추가한다.
+
+
+## S10 — Proximal L2-SP (2026-09-05)
+
+- 진단: 이전 구현은 clip 뒤 gradient에 lambda*(theta-anchor)를 직접 더해 lambda 스케일이 task gradient와 섞였다. 현재 구현은 optimizer step 뒤 theta <- theta - lr*lambda*(theta-anchor)를 적용한다.
+- Fisher S08과 달리 데이터로 추정한 중요도 가중치를 사용하지 않으며, 모든 학습 파라미터를 M_o의 대응 파라미터로 직접 수축한다.
+- 기준 설정: relfe_seed0 계열(seed=0, 7200 steps, cka_f=3, cka_r=2, floor=0.05, norm 동결, EMA=0.99). proximal lambda만 변경한다.
+- S10-1: lambda=2. lr*lambda*7200=0.432.
+- S10-2: lambda=5. lr*lambda*7200=1.08.
+- S10-3: lambda=15. lr*lambda*7200=3.24.
+- 목표: CKA_r을 현재 최고 0.9883보다 높이면서 CKA_f를 낮게 유지해 기존 trade-off 곡선을 벗어나는지 확인한다. 최종 목표 구간은 CKA_r >= 0.995, CKA_f <= 0.005다.
+- 코드/설정/출력: unlearn_remap.py, configs/S10-1.yaml, configs/S10-2.yaml, configs/S10-3.yaml, models/S10-1.pt, models/S10-2.pt, models/S10-3.pt.
+- 검증: proximal helper 단위 테스트 4개 통과. 부호, lr 스케일, anchor overshoot 방지, params/anchors 길이 검증을 확인했고 unlearn_remap.py py_compile을 통과했다.
+- 구버전 queue PID 729219는 l2p020 실행 중 중단했고 l2p080/l2p040/l2p005/l2p300은 실행하지 않았다. 비교 불가능한 구버전 결과를 완료 표에 기록하지 않는다.
+- 새 실행 등록: S10-1 -> S10-2 -> S10-3 순서, PID 749378, 로그 logs/S10.runner.log. 등록 확인 상태는 기존 GPU lock 대기 중이다.
+
+- 우선순위 변경(2026-09-05): CKA_r을 직접 겨냥하는 proximal L2-SP를 먼저 검증하기 위해 S09 대기 PID 737371을 GPU 실행 전에 취소했다. S09 코드/설정/테스트는 재현 기록으로 보존하며 결과가 있는 완료 실험으로 취급하지 않는다.
+
+
+## S11 — State-triggered Cosine Tail (2026-09-05, queue 대기)
+
+- 냉정 평가: 기대값은 **중상**. forget term이 이미 자주 OFF인데 후반 CKA_r 변동이 큰 로그와, 추가 backward/loss 없이 step size만 줄인다는 비용 구조가 근거다. 단, minibatch CKA_f는 validation CKA_f의 noisy proxy라 조기 trigger 위험이 있어 guard를 넣었다.
+- matched control: configs/noce.yaml (seed 0, 7200 steps, lr 3e-5, lambda_ce_f=0.0). loss와 optimizer state는 그대로 두고 schedule만 바꾼다.
+- trigger: step >= 3600 이후 최근 200 step의 forget OFF 비율 >= 0.40 **또는** raw CKA_f EMA(beta=0.98) <= cka_floor(0.05). 한 번만 trigger하며 마지막 update에서는 trigger하지 않는다.
+- tail: trigger 시점의 lr 3e-5에서 step 7199의 3e-6까지 cosine decay. trigger가 없으면 3e-5를 유지한다. Adam moments는 유지한다.
+- 평가 우선순위: hard guardrail CKA_f <= 0.03, primary final, secondary CKA_r/RUS, stability는 동일 seed noce 대비. 최고점 목표선은 CKA_r >= 0.995와 CKA_f <= 0.005 동시 달성 여부도 본다.
+- 코드/설정/출력: S11.py, configs/S11.yaml, models/S11.pt.
+- 검증: controller 단위 테스트 5개 통과(최소 step, OFF ratio trigger, tail 종점 lr, 미trigger 상수 lr, 마지막-step 0분모 방지), py_compile S11.py 통과. noce 대비 차이는 script/schedule/output과 설명 주석뿐이다.
+- queue: PID 771558, logs/S11.runner.log, 현재 GPU lock 대기 중. 기존 팀 queue(PID 733772)와 S10 proximal queue(PID 749378)는 유지했다.
+- 중복성: ckar4는 retain batch CKA loss, S10은 weight-space proximal update, S11은 optimizer step-size schedule이므로 정확히 겹치지 않는다.

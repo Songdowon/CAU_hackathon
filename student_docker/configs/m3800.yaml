@@ -1,0 +1,44 @@
+# m3800 — 아래 config로 학습한 궤적의 **스텝 3800 스냅샷**이다.
+# (train.ckpt_every 200 / ckpt_from 2000 → models/ckar8m_s3800.pt)
+#
+# 최종 스텝이 아니라 3800을 고른 이유: 같은 궤적의 스냅샷 13개를 모두 채점한
+# 결과 (1-CKA_f)+CKA_r 합이 3800에서 최대였다. CKA_r은 궤적 전체에서
+# 0.9951~0.9958로 안정적인 반면 CKA_f는 0.0032~0.0156으로 요동친다.
+#
+# 이후 tools/headfit.py 로 head만 보정했다 (--epochs 8 --lr 3e-3).
+# 기본값(ep3/lr1e-3)이 아닌 이유: 이 스냅샷은 보정 전 Acc_f가 3.5%로 높아
+# head를 수렴까지 학습해야 Acc_f가 0에 도달한다. backbone은 건드리지 않으므로
+# CKA_f/CKA_r은 이 단계에서 변하지 않는다.
+seed: 0
+model:
+  arch: vit_base_patch16_224.mae
+  num_classes: 100
+  mo_ckpt: m_o/M_o.pt
+data:
+  split: splits/student_split.pt
+  forget: es/es_imagenet_mo/forget10.json
+  batch_size: 128
+  workers: 8
+train:
+  steps: 4600
+  lr: 3.0e-05
+  optimizer: AdamW
+  weight_decay: 0.0
+  trainable_blocks: 6
+  kd_temperature: 2.0
+  clip_grad: 1.0
+  lambda_feat_r: 2.0
+  lambda_kd_r: 2.0
+  lambda_ce_r: 0.0
+  lambda_remap_f: 1.0
+  lambda_ce_f: 0.0
+  lambda_cka_f: 3.0
+  lambda_cka_r: 8.0
+  cka_floor: 0.05
+  freeze_norm: true
+  ema_decay: 0.99
+  lambda_l2sp: 0.0
+  ckpt_from: 2000
+  ckpt_every: 200
+output:
+  save_path: models/ckar8m.pt

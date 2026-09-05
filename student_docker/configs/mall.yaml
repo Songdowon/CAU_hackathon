@@ -1,0 +1,45 @@
+# mall — 아래 config로 학습한 궤적의 **스냅샷 13개 전부를 균등 평균**한 것이다.
+# (train.ckpt_every 200 / ckpt_from 2000 → models/ckar8m_s2200.pt ~ _s4600.pt)
+#
+# 고르지 않고 전부 평균한 이유: 스냅샷 13개 중 로컬 점수가 가장 높은 하나를
+# 골라 제출했더니 로컬 0.99729 대비 실제 0.99494로 갭이 -0.0024였다. CKA_f는
+# forget 1500장으로 재는 추정량이라 궤적 내 변동의 상당 부분이 표본 노이즈이고,
+# 최대값 선택은 그 노이즈를 고르는 일이 된다. 같은 궤적의 스냅샷은 방향이
+# 정렬돼 있어 평균이 CKA_f와 CKA_r을 동시에 개선한다(계열이 다른 모델끼리
+# 평균하면 반대로 CKA_f가 폭발한다).
+#
+# 이후 tools/headfit.py 로 head만 보정했다 (--epochs 8 --lr 3e-3). backbone은
+# 건드리지 않으므로 CKA_f/CKA_r은 이 단계에서 변하지 않는다.
+seed: 0
+model:
+  arch: vit_base_patch16_224.mae
+  num_classes: 100
+  mo_ckpt: m_o/M_o.pt
+data:
+  split: splits/student_split.pt
+  forget: es/es_imagenet_mo/forget10.json
+  batch_size: 128
+  workers: 8
+train:
+  steps: 4600
+  lr: 3.0e-05
+  optimizer: AdamW
+  weight_decay: 0.0
+  trainable_blocks: 6
+  kd_temperature: 2.0
+  clip_grad: 1.0
+  lambda_feat_r: 2.0
+  lambda_kd_r: 2.0
+  lambda_ce_r: 0.0
+  lambda_remap_f: 1.0
+  lambda_ce_f: 0.0
+  lambda_cka_f: 3.0
+  lambda_cka_r: 8.0
+  cka_floor: 0.05
+  freeze_norm: true
+  ema_decay: 0.99
+  lambda_l2sp: 0.0
+  ckpt_from: 2000
+  ckpt_every: 200
+output:
+  save_path: models/ckar8m.pt

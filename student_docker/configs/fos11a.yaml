@@ -1,4 +1,6 @@
-# [슬롯재사용] l2p005 — relfe + proximal L2-SP λ=5 (θ ← θ − ηλ(θ−M_o), opt.step 뒤). 예상 평형 ‖p−a‖ ≈ 18 (무제약 19.7). CKA_r 천장 0.988을 뚫는 것이 목표
+# fos11a — FOS-11 screening. b11.fc2의 forget 전용 부분공간(retain 대비 분리비
+# 1160x)에만 저랭크 업데이트를 걸어 7,680개 파라미터만 학습한다. retain 보호는
+# loss가 아니라 파라미터화가 담당하므로 lambda_cka_r을 8.0에서 2.0으로 낮춘다.
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -10,8 +12,8 @@ data:
   batch_size: 128
   workers: 8
 train:
-  steps: 7200
-  lr: 3.0e-05
+  steps: 1200
+  lr: 0.001
   optimizer: AdamW
   weight_decay: 0.0
   trainable_blocks: 6
@@ -21,12 +23,15 @@ train:
   lambda_kd_r: 2.0
   lambda_ce_r: 0.0
   lambda_remap_f: 1.0
-  lambda_ce_f: 0.5
+  lambda_ce_f: 0.0
   lambda_cka_f: 3.0
   lambda_cka_r: 2.0
   cka_floor: 0.05
   freeze_norm: true
-  ema_decay: 0.99
-  lambda_l2sp: 5
+  ema_decay: 0.0
+  lambda_l2sp: 0.0
+  ckpt_from: 200
+  ckpt_every: 100
+  fos11: true
 output:
-  save_path: models/l2p005.pt
+  save_path: models/fos11a.pt

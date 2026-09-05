@@ -1,3 +1,4 @@
+# S11 — state-triggered cosine tail on noce control
 """Unlearning: retain 표현은 M_o에 고정하고, forget 표현만 retain 분포로 재매핑한다.
 
 (팀원의 S01이 unlearn.py를 쓰고 있어 별도 파일로 둔다. 실행 방식과 저장 포맷은 동일.)
@@ -24,7 +25,9 @@ CKA는 isotropic scaling과 orthogonal 변환에 불변이므로, forget feature
     python score_model.py models/R01.pt         # 실제 grader (제출 전 필수)
 """
 import argparse
+from collections import deque
 import copy
+import math
 import os
 import random
 import time
@@ -50,6 +53,59 @@ def proximal_l2sp_step(params, anchors, *, lr, strength):
         raise ValueError("lr * strength must stay within [0, 1]")
     for parameter, anchor in zip(params, anchors):
         parameter.add_(parameter - anchor, alpha=-pull)
+
+
+class StateTriggeredCosineTail:
+    """Start cosine LR decay once the forget objective is stably saturated."""
+
+    def __init__(self, *, total_steps, base_lr, final_lr, floor, min_step,
+                 window, off_ratio_threshold, ema_beta):
+        if total_steps < 2 or not 0 <= min_step < total_steps - 1:
+            raise ValueError("min_step must leave at least one tail update")
+        if window < 1:
+            raise ValueError("window must be positive")
+        if not 0.0 <= final_lr <= base_lr:
+            raise ValueError("final_lr must be between zero and base_lr")
+        if not 0.0 <= off_ratio_threshold <= 1.0:
+            raise ValueError("off_ratio_threshold must be within [0, 1]")
+        if not 0.0 <= ema_beta < 1.0:
+            raise ValueError("ema_beta must be within [0, 1)")
+        self.total_steps = int(total_steps)
+        self.base_lr = float(base_lr)
+        self.final_lr = float(final_lr)
+        self.floor = float(floor)
+        self.min_step = int(min_step)
+        self.off_history = deque(maxlen=int(window))
+        self.window = int(window)
+        self.off_ratio_threshold = float(off_ratio_threshold)
+        self.ema_beta = float(ema_beta)
+        self.cka_ema = None
+        self.trigger_step = None
+
+    @property
+    def off_ratio(self):
+        return sum(self.off_history) / len(self.off_history) if self.off_history else 0.0
+
+    def update(self, step, *, raw_cka_f):
+        if not 0 <= step < self.total_steps:
+            raise ValueError("step must be within the optimizer-update range")
+        value = float(raw_cka_f)
+        self.cka_ema = (value if self.cka_ema is None else
+                        self.ema_beta * self.cka_ema + (1 - self.ema_beta) * value)
+        self.off_history.append(value <= self.floor)
+        triggered_now = False
+        ready = (step >= self.min_step and step < self.total_steps - 1
+                 and len(self.off_history) == self.window)
+        if (self.trigger_step is None and ready and
+                (self.cka_ema <= self.floor or self.off_ratio >= self.off_ratio_threshold)):
+            self.trigger_step = step
+            triggered_now = True
+        if self.trigger_step is None:
+            return self.base_lr, triggered_now
+        progress = (step - self.trigger_step) / (self.total_steps - 1 - self.trigger_step)
+        cosine = 0.5 * (1.0 + math.cos(math.pi * progress))
+        lr = self.final_lr + (self.base_lr - self.final_lr) * cosine
+        return float(lr), triggered_now
 
 
 def set_seed(seed):
@@ -92,73 +148,6 @@ def set_trainable(model, k, freeze_norm=False):
     return [p for p in model.parameters() if p.requires_grad]
 
 
-def fos11_basis(teacher, cfg, device, n=2000, energy_r=0.95, energy_f=0.90):
-    """block11.mlp.fc2 입력에서 forget 전용 부분공간을 찾는다.
-
-    GPM 사전 측정에서 대부분의 층은 forget 활성의 90~94%가 retain 부분공간 안에
-    있어 전역 직교 투영을 기각했지만, 이 지점만 예외였다. 실측: retain 95%
-    부분공간이 3072차원 중 186차원뿐이고 forget 에너지의 65.4%가 그 밖에 있으며,
-    잔차 90%를 설명하는 방향이 10개다. 그 10개 방향에서
-    mean||V^T h_f||^2 / mean||V^T h_r||^2 = 1160배다 — retain이 거의 쓰지 않는다.
-    """
-    from torch.utils.data import DataLoader
-
-    from train_ft import ListDataset, eval_transform
-    from utils.data import load_split
-    grab = {}
-    h = teacher.backbone.blocks[11].mlp.fc2.register_forward_pre_hook(
-        lambda _m, inp: grab.__setitem__("h", inp[0]))
-    root, _, fl, released = load_split(cfg["data"]["split"], cfg["data"]["forget"])
-    fl, g = set(fl), torch.Generator().manual_seed(0)
-
-    def acts(pool):
-        idx = torch.randperm(len(pool), generator=g)[:n]
-        dl = DataLoader(ListDataset([pool[i] for i in idx], root,
-                                    eval_transform(teacher.data_config)),
-                        batch_size=100, shuffle=False, num_workers=8)
-        out = []
-        for x, _ in dl:
-            with torch.autocast("cuda", torch.float16):
-                teacher.backbone.forward_features(x.to(device))
-            out.append(grab["h"][:, 0].float().cpu())
-        return torch.cat(out).to(device)
-
-    with torch.no_grad():
-        H_r, H_f = acts([i for i in released if i[1] not in fl]), acts([i for i in released if i[1] in fl])
-        mu = H_r.mean(0, keepdim=True)
-        Hr, Hf = H_r - mu, H_f - mu
-        U, S, _ = torch.linalg.svd(Hr.T @ Hr)
-        r = int((torch.cumsum(S / S.sum(), 0) < energy_r).sum().item()) + 1
-        Ur = U[:, :r]
-        perp = Hf - (Hf @ Ur) @ Ur.T
-        U2, S2, _ = torch.linalg.svd(perp.T @ perp)
-        k = int((torch.cumsum(S2 / S2.sum(), 0) < energy_f).sum().item()) + 1
-        Vf = U2[:, :k].contiguous()
-        ratio = (Hf @ Vf).pow(2).sum(1).mean() / (Hr @ Vf).pow(2).sum(1).mean()
-    h.remove()
-    print(f"FOS-11: retain 부분공간 {r}/3072, forget 전용 방향 {k}개, "
-          f"분리비 {ratio:.0f}x, 학습 파라미터 {768*k:,}", flush=True)
-    return Vf
-
-
-def attach_fos11(model, Vf):
-    """fc2를 얼린 채 저랭크 경로만 더한다: W' = W_o + B Vf^T (B만 학습)."""
-    for p in model.parameters():
-        p.requires_grad_(False)
-    fc2 = model.backbone.blocks[11].mlp.fc2
-    B = torch.zeros(fc2.out_features, Vf.shape[1], device=Vf.device, requires_grad=True)
-    fc2.register_forward_hook(
-        lambda _m, inp, out: out + (inp[0].to(B.dtype) @ Vf) @ B.T)
-    return B, fc2
-
-
-def fold_fos11(B, Vf, fc2):
-    """학습이 끝나면 원래 ViT와 완전히 같은 구조로 되돌린다."""
-    with torch.no_grad():
-        fc2.weight.add_((B @ Vf.T).to(fc2.weight.dtype))
-    fc2._forward_hooks.clear()
-
-
 def cycle(loader):
     while True:
         for batch in loader:
@@ -189,24 +178,10 @@ def main():
     t = cfg["train"]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # teacher(= 채점 기준)는 항상 M_o다. CKA_f/CKA_r 모두 M_o 대비로 채점되므로
-    # 다른 모델을 retain teacher로 쓰면 그 모델의 CKA_r이 곧 상한이 된다.
-    teacher = load_mo(cfg["model"]["mo_ckpt"], cfg["model"]["num_classes"], device).eval()
+    model = load_mo(cfg["model"]["mo_ckpt"], cfg["model"]["num_classes"], device)
+    teacher = copy.deepcopy(model).eval()
     for q in teacher.parameters():
         q.requires_grad_(False)
-    # 학생의 출발점. 기본은 M_o지만, 이미 얻은 해에서 이어 학습할 때 지정한다.
-    model = load_mo(cfg["model"].get("init_ckpt") or cfg["model"]["mo_ckpt"],
-                    cfg["model"]["num_classes"], device)
-
-    # forget 보존 teacher. ckar4의 CKA_f=0.0046은 재현되지 않는 희귀 궤적이므로
-    # (같은 config seed2가 0.0350), "다시 지우기"가 아니라 "이미 지운 상태를
-    # 붙잡기"로 목표를 바꾼다. 지정하면 forget feature를 이 모델 쪽으로 고정한다.
-    fteacher = None
-    if t.get("forget_teacher_ckpt"):
-        fteacher = load_mo(t["forget_teacher_ckpt"], cfg["model"]["num_classes"], device).eval()
-        for q in fteacher.parameters():
-            q.requires_grad_(False)
-        print(f"forget 보존 teacher: {t['forget_teacher_ckpt']}")
 
     loaders = get_loaders(model, batch_size=cfg["data"]["batch_size"],
                           workers=cfg["data"]["workers"], seed=cfg["seed"],
@@ -249,28 +224,6 @@ def main():
             shuffle=True, num_workers=cfg["data"]["workers"], pin_memory=True)
         print(f"retain 증강 강화: {t['retain_aug']}, reprob {recipe['reprob']}")
 
-    # forget 삭제도 학습 이미지에만 걸려 있다 (학습 forget CKA_f 0.0047 vs 처음
-    # 보는 forget 0.0117, 같은 n=1500). retain 격차(-0.0035)의 2배다. forget
-    # 이미지를 매번 크게 변형시키면 삭제가 특정 이미지가 아니라 클래스에 걸린다.
-    # §27이 기각한 증강 강화는 retain 앵커 쪽이고 논리가 반대다 — retain은 원본
-    # 표현을 붙잡아야 하니 변형이 해롭지만, forget은 넓게 지워야 하니 도움이 된다.
-    if t.get("forget_aug"):
-        from torch.utils.data import DataLoader
-
-        from imagenet_vit import MAE_FT, build_train_transform
-        from train_ft import ListDataset
-        from utils.data import load_split
-        recipe = dict(MAE_FT)
-        recipe["auto_augment"] = t["forget_aug"]
-        recipe["reprob"] = float(t.get("forget_reprob", recipe["reprob"]))
-        tf, _ = build_train_transform(model.data_config, recipe)
-        root, _, fl, released = load_split(cfg["data"]["split"], cfg["data"]["forget"])
-        items = [it for it in released if it[1] in set(fl)]
-        loaders["forget"] = DataLoader(
-            ListDataset(items, root, tf), batch_size=cfg["data"]["batch_size"],
-            shuffle=True, num_workers=cfg["data"]["workers"], pin_memory=True)
-        print(f"forget 증강 강화: {t['forget_aug']}, reprob {recipe['reprob']}")
-
     # CKA_r은 retain 13,500장에서 측정되는데 앵커는 매 스텝 batch_size장만 본다.
     # forget 압력을 건드리지 않고 retain 표본만 늘려 제약 추정을 개선한다.
     if t.get("batch_retain"):
@@ -286,13 +239,7 @@ def main():
             shuffle=True, num_workers=cfg["data"]["workers"], pin_memory=True)
         print(f"retain 배치 {t['batch_retain']}로 확대")
 
-    fos = None
-    if t.get("fos11"):
-        Vf = fos11_basis(teacher, cfg, device)
-        B, fc2 = attach_fos11(model, Vf)
-        params, fos = [B], (B, Vf, fc2)
-    else:
-        params = set_trainable(model, t.get("trainable_blocks", -1), t.get("freeze_norm", False))
+    params = set_trainable(model, t.get("trainable_blocks", -1), t.get("freeze_norm", False))
     total = sum(q.numel() for q in model.parameters())
     print(f"학습 파라미터 {sum(q.numel() for q in params)/1e6:.1f}M / 전체 {total/1e6:.1f}M")
 
@@ -314,6 +261,26 @@ def main():
     w = {k: float(t.get(f"lambda_{k}", d)) for k, d in
          [("feat_r", 1.0), ("kd_r", 1.0), ("ce_r", 0.0),
           ("remap_f", 1.0), ("ce_f", 0.5), ("cka_f", 0.0), ("cka_r", 0.0)]}
+
+    state_tail = None
+    if str(t.get("lr_schedule", "constant")).lower() == "state_triggered_cosine_tail":
+        trigger_floor = float(t.get("cka_floor", 0) or 0)
+        if trigger_floor <= 0:
+            raise ValueError("state-triggered tail requires a positive cka_floor")
+        state_tail = StateTriggeredCosineTail(
+            total_steps=steps,
+            base_lr=float(t["lr"]),
+            final_lr=float(t.get("lr_final", 0.0)),
+            floor=trigger_floor,
+            min_step=int(t.get("lr_trigger_min_step", 3600)),
+            window=int(t.get("lr_trigger_window", 200)),
+            off_ratio_threshold=float(t.get("lr_trigger_off_ratio", 0.40)),
+            ema_beta=float(t.get("lr_trigger_ema_beta", 0.98)),
+        )
+        print("S11 state tail armed: "
+              f"min={state_tail.min_step}, window={state_tail.window}, "
+              f"off_ratio={state_tail.off_ratio_threshold:.2f}, "
+              f"ema_beta={state_tail.ema_beta:.2f}, final_lr={state_tail.final_lr:.3g}")
 
     # 학습 궤적 평균. 로컬 점수는 오르는데 private가 안 따라오는 상황이라
     # 마지막 스텝의 우연한 위치보다 평균 지점이 더 잘 일반화될 수 있다.
@@ -365,27 +332,31 @@ def main():
             # 낮아지면(floor 이하) 더 밀지 않는다. 채점상 CKA_f를 0.02에서 0으로
             # 만들어봐야 final +0.006인 반면 CKA_r 개선은 +0.015 가치가 있다.
             if w["cka_f"]:
-                l_cka_f = batch_linear_cka(z_f_u, z_f_o)
+                raw_cka_f = batch_linear_cka(z_f_u, z_f_o)
+                l_cka_f = raw_cka_f
                 floor = float(t.get("cka_floor", 0) or 0)
                 if floor:
                     l_cka_f = torch.relu(l_cka_f - floor)
             else:
-                l_cka_f = z_f_u.sum() * 0
+                raw_cka_f = z_f_u.sum() * 0
+                l_cka_f = raw_cka_f
 
             loss_r = (w["feat_r"] * l_feat_r + w["kd_r"] * l_kd_r + w["ce_r"] * l_ce_r
                       + w["cka_r"] * l_cka_r)
             if guard:
                 loss_r = loss_r * keep
             loss_f = w["remap_f"] * l_remap_f + w["ce_f"] * l_ce_f + w["cka_f"] * l_cka_f
-            # forget 보존: 이미 지워진 geometry를 그대로 붙잡는다 (remap은 매 스텝
-            # 무작위 파트너로 다시 지우려 하므로 보존과 목적이 다르다 — 보존을 쓸
-            # 때는 lambda_remap_f를 낮추거나 0으로 두는 것이 맞다).
-            if fteacher is not None:
-                with torch.no_grad():
-                    z_f_p, _ = forward(fteacher, x_f)
-                l_pres_f = (1 - F.cosine_similarity(z_f_u, z_f_p, dim=1)).mean()
-                loss_f = loss_f + float(t.get("lambda_preserve_f", 1.0)) * l_pres_f
             loss = loss_r + loss_f
+
+        if state_tail is not None:
+            lr_now, triggered_now = state_tail.update(
+                step, raw_cka_f=float(raw_cka_f.detach()))
+            for group in opt.param_groups:
+                group["lr"] = lr_now
+            if triggered_now:
+                print(f"S11 tail triggered at step {step}: "
+                      f"cka_ema={state_tail.cka_ema:.4f}, "
+                      f"off_ratio={state_tail.off_ratio:.3f}", flush=True)
 
         opt.zero_grad(set_to_none=True)
         if t.get("grad_project", False):
@@ -419,19 +390,6 @@ def main():
                 for k, v in model.state_dict().items():
                     ema[k].mul_(decay).add_(v.float(), alpha=1 - decay)
 
-        # CKA_r은 config가 정하지만 CKA_f는 시드 뽑기다 (ckar4 seed0 0.0046 vs
-        # seed2 0.0350, CKA_r은 0.9922/0.9920으로 동일). 합을 사실상 CKA_f가
-        #정하므로 뽑기 횟수를 늘리는 것이 이득이다. 학습 중 궤적을 주기적으로
-        #남겨 한 번의 학습에서 여러 후보를 얻는다.
-        every = int(t.get("ckpt_every", 0) or 0)
-        if every and step >= int(t.get("ckpt_from", 0)) and (step + 1) % every == 0:
-            snap = f"{os.path.splitext(cfg['output']['save_path'])[0]}_s{step+1}.pt"
-            cur = model.state_dict()
-            # 최종 저장과 같은 dtype 변환을 해야 strict 로드가 된다 (ema는 float32).
-            torch.save({"model": {k: (ema[k].to(cur[k].dtype) if ema is not None else cur[k])
-                                  for k in cur}}, snap)
-            print(f"  체크포인트 저장: {snap}", flush=True)
-
         if step % 50 == 0 or step == steps - 1:
             print(f"step {step:4d}/{steps} loss {loss.item():.4f} | feat_r {l_feat_r.item():.4f} "
                   f"kd_r {l_kd_r.item():.4f} remap_f {l_remap_f.item():.4f} "
@@ -441,8 +399,6 @@ def main():
                      if anchor is not None else ""),
                   flush=True)
 
-    if fos is not None:
-        fold_fos11(*fos)
     out = cfg["output"]["save_path"]
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
     if ema is not None:

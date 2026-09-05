@@ -1,4 +1,4 @@
-# grd_seed0 — s06 + retain 가드레일 (CKA_r 0.985 이상이면 앵커 off) seed 0
+# [슬롯재사용] l2sp025x2 — L2-SP α=0.25 + retain 앵커 2배(feat_r/kd_r 4.0) — CKA_r을 두 방향에서 동시에 민다
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -10,21 +10,23 @@ data:
   batch_size: 128
   workers: 8
 train:
-  steps: 4800
+  steps: 7200
   lr: 3.0e-05
   optimizer: AdamW
   weight_decay: 0.0
   trainable_blocks: 6
   kd_temperature: 2.0
   clip_grad: 1.0
-  lambda_feat_r: 2.0
-  lambda_kd_r: 2.0
+  lambda_feat_r: 4.0
+  lambda_kd_r: 4.0
   lambda_ce_r: 0.0
   lambda_remap_f: 1.0
   lambda_ce_f: 0.5
-  lambda_cka_f: 2.0
+  lambda_cka_f: 3.0
+  lambda_cka_r: 2.0
   cka_floor: 0.05
   freeze_norm: true
-  retain_guard: 0.985
+  ema_decay: 0.99
+  lambda_l2sp: 0.25
 output:
-  save_path: models/grd_seed0.pt
+  save_path: models/l2sp025x2.pt

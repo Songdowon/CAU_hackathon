@@ -1,4 +1,6 @@
-# [슬롯재사용] l2p005 — relfe + proximal L2-SP λ=5 (θ ← θ − ηλ(θ−M_o), opt.step 뒤). 예상 평형 ‖p−a‖ ≈ 18 (무제약 19.7). CKA_r 천장 0.988을 뚫는 것이 목표
+# ckar8m — ckar8(lambda_cka_r 8.0) 궤적 채굴. 4600스텝에서 절단(lr 상수라 그 구간
+# 스냅샷은 7200스텝 실행과 동일). 2000부터 200스텝마다 = 13뽑기.
+# ckar6에서 최고점이 가장 이른 스냅샷이었고 CKA_r이 학습 진행에 따라 감소했다.
 seed: 0
 model:
   arch: vit_base_patch16_224.mae
@@ -10,7 +12,7 @@ data:
   batch_size: 128
   workers: 8
 train:
-  steps: 7200
+  steps: 4600
   lr: 3.0e-05
   optimizer: AdamW
   weight_decay: 0.0
@@ -21,12 +23,14 @@ train:
   lambda_kd_r: 2.0
   lambda_ce_r: 0.0
   lambda_remap_f: 1.0
-  lambda_ce_f: 0.5
+  lambda_ce_f: 0.0
   lambda_cka_f: 3.0
-  lambda_cka_r: 2.0
+  lambda_cka_r: 8.0
   cka_floor: 0.05
   freeze_norm: true
   ema_decay: 0.99
-  lambda_l2sp: 5
+  lambda_l2sp: 0.0
+  ckpt_from: 2000
+  ckpt_every: 200
 output:
-  save_path: models/l2p005.pt
+  save_path: models/ckar8m.pt
