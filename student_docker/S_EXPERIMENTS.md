@@ -297,3 +297,14 @@ S05 실행 등록: 2026-09-04T17:18:43.594944+00:00 (UTC), PID 305434. 접수 �
 - 검증: controller 단위 테스트 5개 통과(최소 step, OFF ratio trigger, tail 종점 lr, 미trigger 상수 lr, 마지막-step 0분모 방지), py_compile S11.py 통과. noce 대비 차이는 script/schedule/output과 설명 주석뿐이다.
 - queue: PID 771558, logs/S11.runner.log, 현재 GPU lock 대기 중. 기존 팀 queue(PID 733772)와 S10 proximal queue(PID 749378)는 유지했다.
 - 중복성: ckar4는 retain batch CKA loss, S10은 weight-space proximal update, S11은 optimizer step-size schedule이므로 정확히 겹치지 않는다.
+
+
+## S13 - Anchor-Preserving Consensus Merge (2026-09-05)
+
+- Purpose: create a submission checkpoint using CPU-only weight-space merging while preventing the cross-seed forget-direction cancellation observed in naive averaging.
+- Base/anchor/helpers: m_o/M_o.pt / models/mall_hf.pt / models/s1all.pt + models/s2all.pt.
+- Rule: retain the anchor delta sign; use median magnitude only from helper deltas with matching signs; restore each tensor's anchor delta norm. Opposing helper deltas never cancel the anchor. The classifier head is copied exactly from mall_hf.
+- Numerical guard: max-absolute anchor delta <= 1e-5 is treated as EMA rounding drift and restored exactly to M_o. Evidence showed a clean gap from 6.68e-6 to 1.18e-3; 78 tensors were restored.
+- Artifacts: S13.py, configs/S13.yaml, models/S13.pt, results/S13.merge-audit.json, tests/test_s13.py.
+- CPU verification: 152 tensors; 2 head tensors exactly preserved; 78 tensors exactly restored to M_o; 72 consensus tensors; all values finite and on CPU; saved delta-norm maximum relative error 5.23e-6; exact reload and SHA-256 check passed.
+- Status: checkpoint generated. No GPU evaluation was run, and S13 was not registered in the shared GPU queue. Local/private score is unverified; require CKA_f_o <= 0.03 before submission.

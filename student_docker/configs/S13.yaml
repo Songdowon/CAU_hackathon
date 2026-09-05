@@ -1,0 +1,14 @@
+experiment: S13
+script: S13.py
+mode: cpu_checkpoint_merge
+base: m_o/M_o.pt
+anchor: models/mall_hf.pt
+helpers:
+  - models/s1all.pt
+  - models/s2all.pt
+output: models/S13.pt
+audit: results/S13.merge-audit.json
+numerical_delta_max: 1.0e-5
+head_prefixes:
+  - head.
+  - backbone.head.

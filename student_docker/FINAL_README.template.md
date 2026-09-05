@@ -14,11 +14,11 @@
 M_o (m_o/M_o.pt)
   │
   │  ① unlearning 학습 (unlearn_remap.py, seed 0, 4600 step)
-  │     학습 도중 200 step마다 가중치 스냅샷 13개 저장
+  │     학습 도중 100 step마다 가중치 스냅샷 저장 (step 1000부터, 36개)
   ▼
-models/{{STEM}}_s2200.pt ... models/{{STEM}}_s4600.pt   (13개)
+models/{{STEM}}_s2200.pt ... models/{{STEM}}_s4600.pt   (그중 25개 사용)
   │
-  │  ② 같은 궤적 스냅샷 13개를 균등 평균 (tools/average_snapshots.py)
+  │  ② step 2200~4600 구간의 스냅샷 25개를 균등 평균 (tools/average_snapshots.py)
   ▼
 models/averaged.pt
   │
@@ -78,8 +78,8 @@ model.pt   ← 최종 제출물
 그대로 받게 됩니다.
 
 `CKA_f`는 forget 이미지 1,500장으로 재는 추정량이므로 요동의 상당 부분이 표본
-노이즈입니다. 따라서 **로컬 점수가 가장 높은 스냅샷을 고르지 않고 13개를 전부
-균등 평균**했습니다(제출 실측: 최고 1개 선택 시 로컬 대비 −0.0024, 전부 평균 시
+노이즈입니다. 따라서 **로컬 점수가 가장 높은 스냅샷을 고르지 않고 구간 안의 25개를
+전부 균등 평균**했습니다(제출 실측: 최고 1개 선택 시 로컬 대비 −0.0024, 전부 평균 시
 −0.0009).
 
 **같은 궤적 안에서만 평균합니다.** seed가 다른 궤적을 섞으면 forget 삭제 방향이
@@ -136,11 +136,14 @@ timm `create_transform(is_training=True)`:
 
 ```bash
 # ① unlearning 학습 (약 19분, RTX 5090 기준)
-#    스텝 2000부터 200스텝마다 models/ckar8m_s2200.pt ... _s4600.pt 13개 저장
+#    스텝 1000부터 100스텝마다 models/{{STEM}}_s1000.pt ... _s4600.pt 36개 저장
 python unlearn_remap.py --config configs/final.yaml
 
-# ② 같은 궤적 스냅샷 13개 균등 평균
-python tools/average_snapshots.py models/{{STEM}}_s*.pt --out models/averaged.pt
+# ② 그중 step 2200~4600 구간의 25개만 균등 평균
+#    (구간은 결과를 보고 고른 것이 아니라 앞서 확정한 채굴 구간을 그대로 쓴 것)
+python tools/average_snapshots.py \
+    $(for s in $(seq 2200 100 4600); do echo -n "models/{{STEM}}_s$s.pt "; done) \
+    --out models/averaged.pt
 
 # ③ head만 보정 (backbone freeze)
 python tools/headfit.py models/averaged.pt --out model.pt --epochs 8 --lr 3e-3
